@@ -44,6 +44,10 @@
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<key>LSApplicationQueriesSchemes</key>
+<array>
+    <string>tel</string>
+</array>
 	<true/>
 </dict>
 </plist>

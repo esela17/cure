@@ -1,6 +1,5 @@
 import 'package:cure_app/providers/auth_provider.dart';
 import 'package:cure_app/utils/constants.dart';
-import 'package:cure_app/widgets/loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
