@@ -15,6 +15,7 @@ const String ordersRoute = '/orders';
 const String profileRoute = '/profile';
 const String editProfileRoute = '/editProfile';
 const String nurseHomeRoute = '/nurseHome';
+const String termsRoute = '/terms';
 
 enum ServiceProviderType {
   unspecified,

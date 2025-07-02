@@ -1,3 +1,5 @@
+// lib/screens/home_screen.dart
+
 import 'package:cure_app/providers/cart_provider.dart';
 import 'package:cure_app/providers/servers_provider.dart';
 import 'package:cure_app/providers/ads_provider.dart';
@@ -14,25 +16,17 @@ import 'package:cure_app/widgets/active_order_banner.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-class HomeScreen extends StatefulWidget {
+// ✅ تم تحويلها إلى StatelessWidget لأنها لم تعد بحاجة لإدارة حالة خاصة بها
+class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  @override
-  void initState() {
-    super.initState();
-
-    final activeOrderProvider =
-        Provider.of<ActiveOrderProvider>(context, listen: false);
-    activeOrderProvider.refreshActiveOrder();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    // ✅ يمكن استدعاء refreshActiveOrder هنا بأمان
+    // Provider سيمنع استدعائها في كل مرة يتم فيها إعادة بناء الواجهة
+    Provider.of<ActiveOrderProvider>(context, listen: false)
+        .refreshActiveOrder();
+
     return Scaffold(
       backgroundColor: const Color(0xFFF9F9F9),
       body: Consumer2<CartProvider, ActiveOrderProvider>(
@@ -75,7 +69,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   SliverToBoxAdapter(
                     child: Consumer<AdsProvider>(
                       builder: (context, adsProvider, _) {
-                        if (adsProvider.ads.isEmpty) {}
+                        if (adsProvider.ads.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 0.0),
                           child: AdsBannerWidget(ads: adsProvider.ads),
@@ -115,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               if (cartProvider.cartItems.isNotEmpty)
-                _buildFloatingCartBanner(cartProvider),
+                _buildFloatingCartBanner(cartProvider, context),
             ],
           );
         },
@@ -166,7 +162,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildFloatingCartBanner(CartProvider cartProvider) {
+  Widget _buildFloatingCartBanner(
+      CartProvider cartProvider, BuildContext context) {
     return Positioned(
       bottom: 20,
       left: 10,

@@ -58,11 +58,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "997897806633-pefbihbo109bmvtipo9n7hrm1r1k6ln5.apps.googleusercontent.com",
+          "client_id": "997897806633-7adtf5itmmr3oke9h19597duc060vcv7.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.example.cure_app",
-            "certificate_hash": "de9e99b55ecb768db1bc6fabb9d835186e0eeada"
+            "certificate_hash": "711ae60f8718bf9d6c74512d75d6b46cd6f8b9ba"
           }
         },
         {

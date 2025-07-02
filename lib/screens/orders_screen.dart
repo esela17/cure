@@ -3,11 +3,7 @@ import 'package:cure_app/screens/patient_order_details_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cure_app/providers/orders_provider.dart';
-import 'package:cure_app/utils/constants.dart';
 import 'package:cure_app/utils/helpers.dart';
-import 'package:cure_app/widgets/loading_indicator.dart';
-import 'package:cure_app/widgets/error_message.dart';
-import 'package:cure_app/widgets/empty_state.dart';
 import 'dart:ui';
 
 class OrdersScreen extends StatefulWidget {

@@ -1,18 +1,36 @@
 // lib/services/notification_service.dart
 
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+// ✅ دالة مستقلة لمعالجة الرسالة ليمكن استدعاؤها من عدة أماكن
+void _handleMessage(RemoteMessage message) {
+  print('رسالة تم التعامل معها: ${message.data}');
+  final orderId = message.data['orderId'];
+  if (orderId != null) {
+    // استخدم خدمة التوجيه للانتقال إلى شاشة تفاصيل الطلب
+    // تأكد من أن لديك مسار (route) مناسب في MaterialApp
+    // NavigationService.navigatorKey.currentState?.pushNamed('/nurse-order-details', arguments: orderId);
+    print("يجب التوجيه إلى شاشة الطلب رقم: $orderId");
+  }
+}
 
 class NotificationService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  // تهيئة الإشعارات
   Future<void> initialize() async {
     await requestPermission();
 
-    // إعداد إشعارات flutter_local_notifications
+    // ✅ التعامل مع الإشعار الذي يفتح التطبيق وهو مغلق
+    FirebaseMessaging.instance.getInitialMessage().then((message) {
+      if (message != null) {
+        _handleMessage(message);
+      }
+    });
+
     const AndroidInitializationSettings androidInitSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
@@ -21,45 +39,28 @@ class NotificationService {
 
     await _localNotificationsPlugin.initialize(initSettings);
 
-    // الاستماع للإشعارات عندما يكون التطبيق في المقدمة
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      print('📩 رسالة أثناء foreground');
+      print('📩 رسالة أثناء foreground: ${message.notification?.title}');
       if (message.notification != null) {
         _showNotification(
-          title: message.notification!.title ?? '',
-          body: message.notification!.body ?? '',
+          title: message.notification!.title ?? 'إشعار جديد',
+          body: message.notification!.body ?? 'لديك رسالة جديدة.',
         );
       }
     });
 
-    // التعامل مع الإشعارات عند فتح التطبيق منها
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      print('📬 المستخدم ضغط على إشعار');
-      // يمكنك توجيه المستخدم إلى شاشة معينة هنا
-    });
+    // ✅ التعامل مع الإشعار الذي يفتح التطبيق وهو في الخلفية
+    FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
   }
 
-  // طلب صلاحية الإشعارات
   Future<void> requestPermission() async {
-    NotificationSettings settings = await _firebaseMessaging.requestPermission(
+    await _firebaseMessaging.requestPermission(
       alert: true,
       badge: true,
       sound: true,
-      provisional: false,
     );
-
-    if (settings.authorizationStatus == AuthorizationStatus.denied) {
-      print('🚫 تم رفض الإذن');
-    } else if (settings.authorizationStatus ==
-        AuthorizationStatus.notDetermined) {
-      print('❓ لم يتم تحديد الإذن');
-    } else if (settings.authorizationStatus == AuthorizationStatus.authorized ||
-        settings.authorizationStatus == AuthorizationStatus.provisional) {
-      print('✅ تم منح إذن الإشعارات');
-    }
   }
 
-  // عرض إشعار باستخدام flutter_local_notifications
   Future<void> _showNotification({
     required String title,
     required String body,
@@ -68,23 +69,25 @@ class NotificationService {
         AndroidNotificationDetails(
       'default_channel_id',
       'Default Channel',
+      channelDescription: 'This is the default channel for notifications.',
       importance: Importance.max,
       priority: Priority.high,
       playSound: true,
+      color: Color(0xFF6d73ff),
+      icon: '@mipmap/ic_launcher',
     );
 
     const NotificationDetails notificationDetails =
         NotificationDetails(android: androidDetails);
 
     await _localNotificationsPlugin.show(
-      0,
+      DateTime.now().millisecondsSinceEpoch.toSigned(31),
       title,
       body,
       notificationDetails,
     );
   }
 
-  // جلب FCM Token
   Future<String?> getFcmToken() async {
     final token = await _firebaseMessaging.getToken();
     print("🔐 FCM Token: $token");

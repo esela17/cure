@@ -1,6 +1,9 @@
+// lib/auth/register_screen.dart
+
 import 'package:cure_app/providers/auth_provider.dart';
 import 'package:cure_app/utils/constants.dart';
 import 'package:cure_app/widgets/loading_indicator.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -22,6 +25,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  // ✅ الخطوة 1: إضافة متغير لتتبع حالة الموافقة على الشروط
+  bool _agreeToTerms = false;
 
   @override
   void dispose() {
@@ -33,22 +38,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  // ✅ الخطوة 2: تعديل دالة التسجيل لتشمل التحقق من الموافقة
   void _submitRegister() async {
+    // إخفاء لوحة المفاتيح
+    FocusScope.of(context).unfocus();
+
     if (_formKey.currentState!.validate()) {
       if (_passwordController.text != _confirmPasswordController.text) {
         ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('كلمات المرور غير متطابقة!')),
+        );
+        return;
+      }
+
+      // التحقق من الموافقة على الشروط
+      if (!_agreeToTerms) {
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'كلمات المرور غير متطابقة!',
-              textAlign: TextAlign.right,
-            ),
+            content: Text('يجب الموافقة على الشروط والأحكام أولاً'),
+            backgroundColor: Colors.red,
           ),
         );
         return;
       }
 
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
       if (authProvider.isLoading) return;
 
       final success = await authProvider.register(
@@ -62,15 +76,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!context.mounted) return;
 
       if (success) {
+        // لا حاجة للاشتراك في nurses هنا، يجب أن تتم هذه العملية من AuthProvider
+        // بناءً على دور المستخدم بعد تحميل ملفه الشخصي
         Navigator.of(context)
-            .pushNamedAndRemoveUntil(authCheckRoute, (route) => false);
+            .pushNamedAndRemoveUntil(homeRoute, (route) => false);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              authProvider.errorMessage ?? 'حدث خطأ غير متوقع',
-              textAlign: TextAlign.right,
-            ),
+            content: Text(authProvider.errorMessage ?? 'حدث خطأ غير متوقع'),
           ),
         );
       }
@@ -79,8 +92,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-
     return Scaffold(
       backgroundColor: kPrimaryColor,
       body: Column(
@@ -89,7 +100,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
             flex: 2,
             child: Center(
               child: Image.asset(
-                // استخدام الشعار المحلي
                 'lib/assets/2.png',
                 height: 250,
               ),
@@ -152,11 +162,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const SizedBox(height: 20),
                       _buildPasswordField("تأكيد كلمة المرور",
                           _confirmPasswordController, false),
+
+                      // ✅ الخطوة 3: إضافة ودجت الشروط والأحكام
+                      const SizedBox(height: 20),
+                      _buildTermsAndConditions(context),
                       const SizedBox(height: 30),
+
                       Consumer<AuthProvider>(
                         builder: (context, authProvider, child) {
                           if (authProvider.isLoading) {
-                            return const LoadingIndicator();
+                            return const Center(child: LoadingIndicator());
                           }
                           return SizedBox(
                             width: double.infinity,
@@ -187,16 +202,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       const SizedBox(height: 25),
                       Center(
-                        child: Text(
-                          'أو',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 25),
-                      Center(
                         child: TextButton(
                           onPressed: () => Navigator.pop(context),
                           child: const Text(
@@ -220,6 +225,52 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  // ✅ الخطوة 4: بناء ودجت مربع الاختيار ورابط الشروط
+  Widget _buildTermsAndConditions(BuildContext context) {
+    return Row(
+      children: [
+        Checkbox(
+          value: _agreeToTerms,
+          onChanged: (bool? value) {
+            setState(() {
+              _agreeToTerms = value ?? false;
+            });
+          },
+          activeColor: kPrimaryColor,
+        ),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade700,
+                fontFamily: 'Cairo', // تأكد من استخدام نفس خط التطبيق
+              ),
+              children: [
+                const TextSpan(text: 'أوافق على '),
+                TextSpan(
+                  text: 'الشروط والأحكام',
+                  style: const TextStyle(
+                    color: kPrimaryColor,
+                    fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.underline,
+                  ),
+                  recognizer: TapGestureRecognizer()
+                    ..onTap = () {
+                      // افترض أن لديك مسار اسمه termsRoute
+                      // ستحتاج إلى إنشاء شاشة TermsScreen وإضافة هذا المسار في app.dart
+                      Navigator.pushNamed(context, termsRoute);
+                    },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // دوال بناء حقول الإدخال تبقى كما هي
   Widget _buildInputField(String hint, IconData icon,
       TextEditingController controller, TextInputType keyboardType) {
     return TextFormField(
@@ -254,17 +305,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       ),
       validator: (value) {
-        if (value == null || value.isEmpty) {
+        if (value == null || value.trim().isEmpty) {
           return 'هذا الحقل مطلوب';
         }
-        if (keyboardType == TextInputType.emailAddress &&
-            !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w]{2,4}$').hasMatch(value)) {
-          return 'صيغة البريد الإلكتروني غير صحيحة';
+
+        if (keyboardType == TextInputType.emailAddress) {
+          final emailRegex =
+              RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+          if (!emailRegex.hasMatch(value.trim())) {
+            return 'صيغة البريد الإلكتروني غير صحيحة';
+          }
         }
-        if (keyboardType == TextInputType.phone &&
-            !RegExp(r'^[0-9]+$').hasMatch(value)) {
-          return 'رقم هاتف غير صالح';
+
+        if (keyboardType == TextInputType.phone) {
+          final phoneRegex = RegExp(r'^0[0-9]{10}$');
+          if (!phoneRegex.hasMatch(value.trim())) {
+            return 'رقم الهاتف يجب أن يكون 11 رقم ويبدأ بـ 0';
+          }
         }
+
         return null;
       },
     );

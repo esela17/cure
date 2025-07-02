@@ -15,22 +15,22 @@ dependencies:
 
   connectivity_plus: ^6.0.3
   permission_handler: ^11.0.1
-  flutter_local_notifications: ^17.0.0
-  audioplayers: ^5.2.1
+  flutter_local_notifications: ^19.3.0
+  audioplayers: ^6.0.0
   geolocator: ^11.0.0
   google_maps_flutter: ^2.6.0
   google_sign_in: ^6.1.5
   shared_preferences: ^2.2.2
   url_launcher: ^6.3.1
     # Firebase
-  firebase_core: ^3.13.1
-  firebase_auth: ^5.5.4
-  cloud_firestore: ^5.6.8
+  firebase_core: ^3.15.2
+  firebase_auth: ^5.7.0
+  cloud_firestore: ^5.6.12
   firebase_messaging: ^15.2.6 # تم إضافة هذه الحزمة
   firebase_storage: ^12.4.6
 
   # إدارة الحالة
-  provider: ^6.1.2
+  provider: ^6.1.5
 
   # أدوات واجهة المستخدم
   flutter_rating_bar: ^4.0.0+1 # تم إضافة هذه الحزمة
@@ -41,6 +41,7 @@ dependencies:
 
   # التنسيقات (مثل DateFormat)
   intl: ^0.20.2 # تم تحديث إصدارها
+  firebase_app_check: ^0.3.2+9
 
 dev_dependencies:
   flutter_test:
@@ -70,3 +71,4 @@ flutter:
   assets:
     - lib/assets/icons/
     - lib/assets/
+    - assets/sounds/

@@ -1,3 +1,5 @@
+// lib/services/firestore_service.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart' as firestore_package;
 import 'package:cure_app/models/ad_banner.dart';
 import 'package:cure_app/models/category_shortcut.dart';
@@ -62,20 +64,9 @@ class FirestoreService {
 
   // --- ORDER-RELATED FUNCTIONS ---
 
-  Future<void> updateOrderStatus(
-      String orderId, Map<String, dynamic> dataToUpdate) async {
-    await _db.collection('orders').doc(orderId).update(dataToUpdate);
-
-    if (dataToUpdate.containsKey('status') &&
-        (dataToUpdate['status'] == 'completed' ||
-            dataToUpdate['status'] == 'canceled')) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('activeOrderId');
-    }
-  }
-
   Future<firestore_package.DocumentReference> addOrder(Order order) async {
-    final docRef = await _db.collection('orders').add({
+    // ✅✅✅ هذا هو السطر الذي تم تعديله - الحل النهائي للمشكلة ✅✅✅
+    final docRef = await _db.collection('requests').add({
       ...order.toFirestore(),
       if (order.locationLat != null) 'locationLat': order.locationLat,
       if (order.locationLng != null) 'locationLng': order.locationLng,
@@ -87,9 +78,22 @@ class FirestoreService {
     return docRef;
   }
 
+  Future<void> updateOrderStatus(
+      String orderId, Map<String, dynamic> dataToUpdate) async {
+    // تم تعديل اسم المجموعة هنا أيضاً ليتوافق مع باقي أجزاء التطبيق
+    await _db.collection('requests').doc(orderId).update(dataToUpdate);
+
+    if (dataToUpdate.containsKey('status') &&
+        (dataToUpdate['status'] == 'completed' ||
+            dataToUpdate['status'] == 'canceled')) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('activeOrderId');
+    }
+  }
+
   Stream<Order> getOrderStream(String orderId) {
     return _db
-        .collection('orders')
+        .collection('requests') // تعديل لتوحيد الاسم
         .doc(orderId)
         .withConverter<Order>(
           fromFirestore: Order.fromFirestore,
@@ -106,7 +110,7 @@ class FirestoreService {
 
   Stream<List<Order>> getUserOrders(String userId) {
     return _db
-        .collection('orders')
+        .collection('requests') // تعديل لتوحيد الاسم
         .where('userId', isEqualTo: userId)
         .orderBy('orderDate', descending: true)
         .withConverter<Order>(
@@ -119,7 +123,7 @@ class FirestoreService {
 
   Stream<List<Order>> getPendingOrders() {
     return _db
-        .collection('orders')
+        .collection('requests') // تعديل لتوحيد الاسم
         .where('status', isEqualTo: 'pending')
         .orderBy('orderDate', descending: true)
         .withConverter<Order>(
@@ -132,7 +136,7 @@ class FirestoreService {
 
   Stream<List<Order>> getOrdersForNurse(String nurseId) {
     return _db
-        .collection('orders')
+        .collection('requests') // تعديل لتوحيد الاسم
         .where('nurseId', isEqualTo: nurseId)
         .orderBy('orderDate', descending: true)
         .withConverter<Order>(
@@ -179,7 +183,8 @@ class FirestoreService {
     required String patientName,
   }) async {
     final nurseRef = _db.collection('users').doc(nurseId);
-    final orderRef = _db.collection('orders').doc(orderId);
+    final orderRef =
+        _db.collection('requests').doc(orderId); // تعديل لتوحيد الاسم
     final reviewRef = nurseRef.collection('reviews').doc();
 
     return _db.runTransaction((transaction) async {

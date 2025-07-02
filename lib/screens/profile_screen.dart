@@ -471,8 +471,7 @@ class _GlassContainer extends StatelessWidget {
   final EdgeInsets? padding;
 
   const _GlassContainer({
-    required this.child,
-    this.padding,
+    required this.child, this.padding,
   });
 
   @override

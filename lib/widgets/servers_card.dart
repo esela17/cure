@@ -69,7 +69,7 @@ class ServiceCard extends StatelessWidget {
                       '${service.price.toStringAsFixed(2)} جنيه مصري',
                       style: const TextStyle(
                         fontSize: 16,
-                        color: kAccentColor,
+                        color: Color.fromARGB(255, 99, 251, 5),
                         fontWeight: FontWeight.w600,
                       ),
                     ),

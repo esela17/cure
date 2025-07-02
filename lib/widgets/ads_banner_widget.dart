@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:cure_app/models/ad_banner.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';

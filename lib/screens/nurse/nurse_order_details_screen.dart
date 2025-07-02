@@ -4,7 +4,6 @@ import 'package:cure_app/providers/nurse_provider.dart';
 import 'package:cure_app/services/communication_service.dart';
 import 'package:cure_app/services/firestore_service.dart';
 import 'package:cure_app/utils/helpers.dart';
-import 'package:cure_app/widgets/loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -131,9 +130,10 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
                               await CommunicationService.makePhoneCall(
                                   order.phoneNumber);
                             } catch (e) {
-                              if (mounted)
+                              if (mounted) {
                                 showSnackBar(context, 'فشل في إجراء المكالمة',
                                     isError: true);
+                              }
                             }
                           },
                         )),
@@ -163,9 +163,10 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
                                     order.deliveryAddress);
                               }
                             } catch (e) {
-                              if (mounted)
+                              if (mounted) {
                                 showSnackBar(context, 'فشل في فتح الخرائط',
                                     isError: true);
+                              }
                             }
                           },
                         )),
@@ -178,8 +179,7 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
                   color: const Color(0xFF9C27B0),
                   children: [
                     ...order.services
-                        .map((service) => _buildServiceRow(service))
-                        .toList(),
+                        .map((service) => _buildServiceRow(service)),
                   ],
                 ),
                 const SizedBox(height: 12),
