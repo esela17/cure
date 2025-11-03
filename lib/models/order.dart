@@ -1,12 +1,16 @@
+// lib/models/order.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cure_app/models/service.dart';
+// ✅ استيراد Constants لاستخدام ثوابت الدفع
+import 'package:cure_app/utils/constants.dart'; 
 
 class Order {
   final String id;
   final String userId;
   final String patientName;
   final List<Service> services;
-  final double totalPrice;
+  final double totalPrice; // (السعر قبل الخصم)
   final String status;
   final DateTime orderDate;
   final DateTime? appointmentDate;
@@ -20,9 +24,22 @@ class Order {
   final double? locationLat;
   final double? locationLng;
 
-  // ✅ تمت الإضافة هنا
+  // ✅ تقييم المستخدم
   final double? rating;
   final String? reviewText;
+
+  // ✅ حقول الخصومات والدفع (المدمجة والمضافة)
+  final String? couponCode;
+  final double discountAmount;
+  final double finalPrice; // (السعر بعد الخصم)
+  
+  // ✨ حقول نظام المحاسبة الجديدة
+  final String paymentMethod; // 'cash' أو 'online'
+  final double platformCommissionRate; // نسبة العمولة المخزنة وقت الطلب
+  final String? transactionId; // معرف ربط الطلب بسجل /transactions
+  
+  // ✅ حقل سبب الرفض
+  final String? rejectReason;
 
   Order({
     required this.id,
@@ -44,18 +61,27 @@ class Order {
     this.locationLng,
     this.rating,
     this.reviewText,
+    this.couponCode,
+    this.discountAmount = 0.0,
+    required this.finalPrice,
+    this.rejectReason,
+    // ✨ إضافة الحقول الجديدة
+    this.paymentMethod = paymentMethodCash, // قيمة افتراضية: كاش
+    this.platformCommissionRate = 0.0,
+    this.transactionId,
   });
 
-  factory Order.fromFirestore(DocumentSnapshot<Map<String, dynamic>> snapshot,
-      SnapshotOptions? options) {
+  factory Order.fromFirestore(
+      DocumentSnapshot<Map<String, dynamic>> snapshot,
+      SnapshotOptions? options,
+      ) {
     final data = snapshot.data();
     if (data == null) {
       throw StateError("Missing data for orderId: ${snapshot.id}");
     }
 
     List<Service> orderedServices = (data['services'] as List<dynamic>? ?? [])
-        .map(
-            (serviceMap) => Service.fromMap(serviceMap as Map<String, dynamic>))
+        .map((serviceMap) => Service.fromMap(serviceMap as Map<String, dynamic>))
         .toList();
 
     return Order(
@@ -78,6 +104,19 @@ class Order {
       locationLng: (data['locationLng'] as num?)?.toDouble(),
       rating: (data['rating'] as num?)?.toDouble(),
       reviewText: data['reviewText'],
+
+      // ✨ استخراج حقول الخصم والدفع
+      couponCode: data['couponCode'],
+      discountAmount: (data['discountAmount'] as num?)?.toDouble() ?? 0.0,
+      finalPrice: (data['finalPrice'] as num?)?.toDouble() ?? 0.0,
+
+      // ✨ قراءة حقول المحاسبة الجديدة
+      paymentMethod: data['paymentMethod'] ?? paymentMethodCash,
+      platformCommissionRate: (data['platformCommissionRate'] as num?)?.toDouble() ?? 0.0,
+      transactionId: data['transactionId'],
+
+      // ✨ سبب الرفض
+      rejectReason: data['rejectReason'],
     );
   }
 
@@ -90,7 +129,7 @@ class Order {
       'status': status,
       'orderDate': Timestamp.fromDate(orderDate),
       'appointmentDate':
-          appointmentDate != null ? Timestamp.fromDate(appointmentDate!) : null,
+      appointmentDate != null ? Timestamp.fromDate(appointmentDate!) : null,
       'notes': notes,
       'deliveryAddress': deliveryAddress,
       'phoneNumber': phoneNumber,
@@ -100,9 +139,20 @@ class Order {
       'isRated': isRated,
       'locationLat': locationLat,
       'locationLng': locationLng,
-      // ✅ تمت الإضافة هنا
       'rating': rating,
       'reviewText': reviewText,
+
+      // ✨ الحقول المالية
+      'couponCode': couponCode,
+      'discountAmount': discountAmount,
+      'finalPrice': finalPrice,
+
+      // ✨ حقول المحاسبة الجديدة
+      'paymentMethod': paymentMethod,
+      'platformCommissionRate': platformCommissionRate,
+      if (transactionId != null) 'transactionId': transactionId,
+
+      'rejectReason': rejectReason,
     };
   }
 }

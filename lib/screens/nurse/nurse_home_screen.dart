@@ -56,10 +56,9 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
     });
   }
 
-  // ✅ تم تعديل اسم المجموعة هنا
   void _fetchCancelledOrders(String nurseId) {
     FirebaseFirestore.instance
-        .collection('orders') // ✨ تم التعديل من 'requests' إلى 'orders'
+        .collection('orders')
         .where('nurseId', isEqualTo: nurseId)
         .where('status', isEqualTo: 'cancelled')
         .snapshots()
@@ -73,12 +72,9 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
   }
 
   Future<void> _triggerNewOrderAlert() async {
-    print('🚨 تنبيه بطلب جديد!');
     try {
       await _audioPlayer.play(AssetSource('sounds/r.mp3'));
-    } catch (e) {
-      print('⚠️ خطأ في تشغيل الصوت: $e');
-    }
+    } catch (_) {}
     HapticFeedback.heavyImpact();
     await Future.delayed(const Duration(milliseconds: 300));
     HapticFeedback.heavyImpact();
@@ -138,7 +134,7 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
                             subtitle: Text(
                               userProfile?.isAvailable ?? true
                                   ? 'متاح لاستقبال الطلبات'
-                                  : 'غير متاح حاليًا',
+                                  : 'غير متاح حالياً',
                             ),
                             value: userProfile?.isAvailable ?? true,
                             onChanged: (bool value) =>
@@ -369,8 +365,7 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => NurseReviewsScreen(
-                    nurseId: authProvider.currentUser!.uid,
-                  ),
+                      nurseId: authProvider.currentUser!.uid),
                 ),
               );
             }
@@ -395,11 +390,9 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
           count: 'جديد',
           onTap: () {
             Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const NurseChatsScreen(),
-              ),
-            );
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const NurseChatsScreen()));
           },
         ),
         _buildDashboardCard(
@@ -436,8 +429,7 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => NurseReportsScreen(
-                        nurseId: authProvider.currentUser!.uid,
-                      ),
+                          nurseId: authProvider.currentUser!.uid),
                     ),
                   );
                 }
@@ -449,7 +441,6 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
     );
   }
 
-  // ✅ تم تعديل اسم المجموعة هنا أيضًا
   void _showCancelledOrdersDialog(BuildContext context, String? nurseId) {
     if (nurseId == null) return;
 
@@ -468,7 +459,7 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
           height: 400,
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
-                .collection('orders') // ✨ تم التعديل من 'requests' إلى 'orders'
+                .collection('orders')
                 .where('nurseId', isEqualTo: nurseId)
                 .where('status', isEqualTo: 'cancelled')
                 .orderBy('orderDate', descending: true)
@@ -488,25 +479,16 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
                 itemCount: snapshot.data!.docs.length,
                 itemBuilder: (context, index) {
                   final order = snapshot.data!.docs[index];
-                  final orderData = order.data() as Map<String, dynamic>;
+                  final data = order.data() as Map<String, dynamic>?;
 
                   return Card(
-                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    color: Colors.red.shade50,
                     child: ListTile(
-                      leading: const CircleAvatar(
-                        backgroundColor: Colors.red,
-                        child: Icon(
-                          Icons.cancel,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ),
-                      title: Text(
-                        'طلب رقم: ${order.id.substring(0, 8)}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
+                      leading: const Icon(Icons.cancel, color: Colors.red),
+                      title: Text('طلب رقم: ${order.id.substring(0, 6)}'),
                       subtitle: Text(
-                          'تاريخ الإلغاء: ${_formatDate(orderData['orderDate'])}'),
+                        'تاريخ: ${_formatDate(data?['orderDate'])}',
+                      ),
                     ),
                   );
                 },
@@ -516,9 +498,9 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('إغلاق'),
-          ),
+            child: const Text("إغلاق"),
+            onPressed: () => Navigator.pop(context),
+          )
         ],
       ),
     );
@@ -527,9 +509,9 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
   String _formatDate(dynamic timestamp) {
     if (timestamp == null || timestamp is! Timestamp) return 'غير محدد';
     try {
-      final DateTime date = timestamp.toDate();
+      final date = timestamp.toDate();
       return '${date.day}/${date.month}/${date.year}';
-    } catch (e) {
+    } catch (_) {
       return 'غير محدد';
     }
   }
@@ -542,7 +524,7 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
         children: [
           ListTile(
             leading: const Icon(Icons.history, color: kPrimaryColor),
-            title: const Text('عرض سجل الطلبات الكامل'),
+            title: const Text('عرض سجل الطلبات'),
             trailing: const Icon(Icons.arrow_forward_ios),
             onTap: () {
               Navigator.push(
@@ -557,7 +539,7 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
           ListTile(
             leading:
                 const Icon(Icons.account_circle_outlined, color: kPrimaryColor),
-            title: const Text('تعديل الملف الشخصي'),
+            title: const Text('الملف الشخصي'),
             trailing: const Icon(Icons.arrow_forward_ios),
             onTap: () {
               Navigator.pushNamed(context, profileRoute);

@@ -1,6 +1,8 @@
+// lib/screens/nurse/nurse_profile_screen.dart
+
 import 'package:cure_app/models/user_model.dart';
 import 'package:cure_app/providers/nurse_profile_provider.dart';
-import 'package:cure_app/screens/all_reviews_screen.dart'; // <-- New import
+import 'package:cure_app/screens/all_reviews_screen.dart';
 import 'package:cure_app/utils/helpers.dart';
 import 'package:cure_app/widgets/empty_state.dart';
 import 'package:cure_app/widgets/error_message.dart';
@@ -8,10 +10,16 @@ import 'package:cure_app/widgets/loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:provider/provider.dart';
+import 'package:cure_app/utils/constants.dart';
+import 'package:cure_app/providers/auth_provider.dart'; // لاستخدامه لاحقاً
 
 class NurseProfileScreen extends StatefulWidget {
   final String nurseId;
-  const NurseProfileScreen({super.key, required this.nurseId});
+  // ✅ إضافة حقل اختياري لعرض رصيد المستخدم الحالي
+  final UserModel? currentUserProfile;
+
+  const NurseProfileScreen(
+      {super.key, required this.nurseId, this.currentUserProfile});
 
   @override
   State<NurseProfileScreen> createState() => _NurseProfileScreenState();
@@ -27,12 +35,86 @@ class _NurseProfileScreenState extends State<NurseProfileScreen> {
     });
   }
 
+  // ✅ دالة بناء بطاقة الرصيد الجديدة (تظهر فقط للمستخدم الحالي)
+  Widget _buildPayoutBalanceCard(BuildContext context, UserModel nurse) {
+    final bool isIndebted = nurse.payoutBalance < 0;
+    final String sign = isIndebted ? '-' : '+';
+    final Color balanceColor = isIndebted ? Colors.red.shade700 : kAccentColor;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10, bottom: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: balanceColor.withOpacity(0.5), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: balanceColor.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isIndebted
+                    ? Icons.account_balance_wallet_outlined
+                    : Icons.monetization_on_outlined,
+                color: balanceColor,
+                size: 30,
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isIndebted
+                        ? 'المديونية المستحقة للمنصة'
+                        : 'رصيد مستحقاتك الصافي',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  Text(
+                    '${sign} ${nurse.payoutBalance.abs().toStringAsFixed(2)} جنيه',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: balanceColor,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          // زر للمراجعة أو التسوية (يذهب لسجل المعاملات)
+          IconButton(
+            onPressed: () {
+              Navigator.pushNamed(context, transactionHistoryRoute);
+            },
+            icon: Icon(Icons.arrow_forward_ios, color: Colors.grey.shade400),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bool isCurrentUserProfile = widget.currentUserProfile != null;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الملف الشخصي للممرض',
-            style: TextStyle(color: Colors.white)),
+        title: Text(
+            isCurrentUserProfile ? 'ملفي المالي' : 'الملف الشخصي للممرض',
+            style: const TextStyle(color: Colors.white)),
       ),
       body: Consumer<NurseProfileProvider>(
         builder: (context, provider, child) {
@@ -52,17 +134,19 @@ class _NurseProfileScreenState extends State<NurseProfileScreen> {
           return ListView(
             padding: const EdgeInsets.all(16.0),
             children: [
-              // Nurse profile header
+              // ✅ عرض بطاقة الرصيد إذا كان هو المستخدم الحالي
+              if (isCurrentUserProfile)
+                _buildPayoutBalanceCard(context, widget.currentUserProfile!),
+
               _buildProfileHeader(context, nurse),
               const Divider(height: 32),
 
-              // Reviews section
+              // 3. قسم التقييمات
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('التقييمات والمراجعات',
                       style: Theme.of(context).textTheme.titleLarge),
-                  // --- This is the new button ---
                   if (reviews.isNotEmpty)
                     TextButton(
                       onPressed: () {
@@ -78,7 +162,6 @@ class _NurseProfileScreenState extends State<NurseProfileScreen> {
                       },
                       child: const Text('عرض الكل'),
                     ),
-                  // ------------------------------
                 ],
               ),
               const SizedBox(height: 16),
@@ -86,13 +169,10 @@ class _NurseProfileScreenState extends State<NurseProfileScreen> {
               if (reviews.isEmpty)
                 const EmptyState(message: 'لا توجد تقييمات لهذا الممرض بعد.')
               else
-                // Display the first 1 or 2 reviews as a preview
                 ListView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  itemCount: reviews.length > 2
-                      ? 2
-                      : reviews.length, // Show max 2 reviews
+                  itemCount: reviews.length > 2 ? 2 : reviews.length,
                   itemBuilder: (context, index) {
                     final review = reviews[index];
                     return Card(
@@ -106,10 +186,10 @@ class _NurseProfileScreenState extends State<NurseProfileScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(review.patientName,
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.bold)),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold)),
                                 Text(formatDateTime(review.timestamp.toDate()),
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                         color: Colors.grey, fontSize: 12)),
                               ],
                             ),
@@ -125,8 +205,8 @@ class _NurseProfileScreenState extends State<NurseProfileScreen> {
                               Padding(
                                 padding: const EdgeInsets.only(top: 8.0),
                                 child: Text(review.comment,
-                                    style:
-                                        TextStyle(fontStyle: FontStyle.italic)),
+                                    style: const TextStyle(
+                                        fontStyle: FontStyle.italic)),
                               ),
                           ],
                         ),

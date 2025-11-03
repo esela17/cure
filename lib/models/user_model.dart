@@ -1,3 +1,5 @@
+// lib/models/user_model.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UserModel {
@@ -9,10 +11,13 @@ class UserModel {
   final String? profileImageUrl;
   final bool isAvailable;
   final String? fcmToken;
-  final double averageRating; // <-- إضافة جديدة
-  final int ratingCount; // <-- إضافة جديدة
+  final double averageRating; // <-- إضافة موجودة
+  final int ratingCount; // <-- إضافة موجودة
   final String? specialization;
   final int jobCount;
+  
+  // ✅ إضافة حقل الرصيد للمحاسبة
+  final double payoutBalance; 
 
   UserModel({
     required this.id,
@@ -23,10 +28,12 @@ class UserModel {
     this.profileImageUrl,
     this.isAvailable = true,
     this.fcmToken,
-    this.averageRating = 0.0, // <-- قيمة افتراضية
-    this.ratingCount = 0, // <-- قيمة افتراضية
+    this.averageRating = 0.0,
+    this.ratingCount = 0,
     this.specialization,
     this.jobCount = 0,
+    // ✅ تحديث Constructor
+    this.payoutBalance = 0.0, 
   });
 
   Map<String, dynamic> toFirestore() {
@@ -38,10 +45,12 @@ class UserModel {
       'profileImageUrl': profileImageUrl,
       'isAvailable': isAvailable,
       'fcmToken': fcmToken,
-      'averageRating': averageRating, // <-- إضافة جديدة
-      'ratingCount': ratingCount, // <-- إضافة جديدة
+      'averageRating': averageRating, 
+      'ratingCount': ratingCount, 
       'specialization': specialization,
       'jobCount': jobCount,
+      // ✅ إضافة حقل الرصيد
+      'payoutBalance': payoutBalance,
     };
   }
 
@@ -66,6 +75,8 @@ class UserModel {
       ratingCount: data['ratingCount'] ?? 0,
       specialization: data['specialization'],
       jobCount: data['jobCount'] ?? 0,
+      // ✅ قراءة حقل الرصيد
+      payoutBalance: (data['payoutBalance'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

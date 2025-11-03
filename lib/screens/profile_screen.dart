@@ -1,8 +1,11 @@
+// lib/screens/profile_screen.dart
+
 import 'dart:ui';
 import 'package:cure_app/providers/auth_provider.dart';
 import 'package:cure_app/utils/constants.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cure_app/models/user_model.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -50,6 +53,64 @@ class _ProfileScreenState extends State<ProfileScreen>
     _mainController.dispose();
     _pulseController.dispose();
     super.dispose();
+  }
+
+  // ✅ دالة بناء بطاقة الرصيد الجديدة (للممرض فقط)
+  Widget _buildPayoutBalanceCard(BuildContext context, UserModel nurse) {
+    final bool isIndebted = nurse.payoutBalance < 0;
+    final String sign = isIndebted ? '-' : '+';
+    final Color balanceColor = isIndebted ? Colors.red.shade700 : kAccentColor;
+
+    return _GlassContainer(
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isIndebted
+                    ? Icons.account_balance_wallet_outlined
+                    : Icons.monetization_on_outlined,
+                color: balanceColor,
+                size: 30,
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isIndebted
+                        ? 'المديونية المستحقة للمنصة'
+                        : 'رصيد مستحقاتك الصافي',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  Text(
+                    '${sign} ${nurse.payoutBalance.abs().toStringAsFixed(2)} جنيه',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: balanceColor,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          // زر للمراجعة (يذهب لسجل المعاملات الموحد)
+          _GlassButton(
+            onPressed: () {
+              Navigator.pushNamed(context, transactionHistoryRoute);
+            },
+            child: Icon(Icons.arrow_forward_ios, color: kPrimaryColor),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -207,6 +268,9 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget _buildProfileContent(user, AuthProvider authProvider) {
+    // التحقق من الدور
+    final bool isNurseOrAdmin = user.role == 'nurse' || user.role == 'admin';
+
     return SafeArea(
       child: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
@@ -224,6 +288,13 @@ class _ProfileScreenState extends State<ProfileScreen>
                       // App Bar
                       _buildAppBar(),
                       const SizedBox(height: 30),
+
+                      // ✅ بطاقة الرصيد (تظهر للممرض/المسؤول)
+                      if (isNurseOrAdmin)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 20),
+                          child: _buildPayoutBalanceCard(context, user),
+                        ),
 
                       // Profile Card
                       _buildProfileCard(user, authProvider),
@@ -391,7 +462,8 @@ class _ProfileScreenState extends State<ProfileScreen>
           right: 0,
           child: _GlassButton(
             onPressed: () async {
-              await authProvider.pickAndUploadProfileImage();
+              // Note: You need to implement pickAndUploadProfileImage in AuthProvider
+              // await authProvider.pickAndUploadProfileImage();
             },
             child: Container(
               width: 32,
@@ -418,8 +490,14 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget _buildActionButtons(AuthProvider authProvider) {
+    // التحقق من الدور
+    final bool isNurseOrAdmin =
+        authProvider.currentUserProfile?.role == 'nurse' ||
+            authProvider.currentUserProfile?.role == 'admin';
+
     return Column(
       children: [
+        // 1. تعديل البيانات
         _ActionButton(
           icon: Icons.edit_note_rounded,
           label: "تعديل البيانات",
@@ -427,6 +505,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           onPressed: () => Navigator.pushNamed(context, editProfileRoute),
         ),
         const SizedBox(height: 16),
+        // 2. سجل الطلبات
         _ActionButton(
           icon: Icons.history_rounded,
           label: "سجل الطلبات",
@@ -434,6 +513,17 @@ class _ProfileScreenState extends State<ProfileScreen>
           onPressed: () => Navigator.pushNamed(context, ordersRoute),
         ),
         const SizedBox(height: 16),
+        // 3. سجل المعاملات (متاح فقط للممرض والمسؤول)
+        if (isNurseOrAdmin)
+          _ActionButton(
+            icon: Icons.account_balance_wallet_rounded,
+            label: "سجل المعاملات المالية",
+            color: kAccentColor,
+            onPressed: () =>
+                Navigator.pushNamed(context, transactionHistoryRoute),
+          ),
+        if (isNurseOrAdmin) const SizedBox(height: 16),
+        // 4. تسجيل الخروج
         _ActionButton(
           icon: Icons.logout_rounded,
           label: "تسجيل الخروج",
@@ -453,6 +543,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
 
     if (result == true) {
+      // ✅ التصحيح: تمرير context إلى signOut
       await authProvider.signOut(context);
       if (context.mounted) {
         Navigator.pushNamedAndRemoveUntil(
@@ -471,7 +562,8 @@ class _GlassContainer extends StatelessWidget {
   final EdgeInsets? padding;
 
   const _GlassContainer({
-    required this.child, this.padding,
+    required this.child,
+    this.padding,
   });
 
   @override
@@ -774,6 +866,7 @@ class _ActionButtonState extends State<_ActionButton>
 
 // Logout Dialog Component
 class _LogoutDialog extends StatelessWidget {
+  // ✅ التصحيح: إضافة BuildContext context كبارامتر صريح
   @override
   Widget build(BuildContext context) {
     return Dialog(

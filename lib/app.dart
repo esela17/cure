@@ -11,6 +11,7 @@ import 'package:cure_app/services/auth_service.dart';
 import 'package:cure_app/services/firestore_service.dart';
 import 'package:cure_app/services/navigation_service.dart';
 import 'package:cure_app/services/storage_service.dart';
+import 'package:cure_app/services/discount_service.dart'; 
 
 // Providers
 import 'package:cure_app/providers/active_order_provider.dart';
@@ -21,6 +22,8 @@ import 'package:cure_app/providers/categories_provider.dart';
 import 'package:cure_app/providers/nurse_provider.dart';
 import 'package:cure_app/providers/orders_provider.dart';
 import 'package:cure_app/providers/servers_provider.dart';
+// ✅ إضافة مزود الإعدادات الجديد
+import 'package:cure_app/providers/settings_provider.dart'; 
 
 // Screens
 import 'package:cure_app/auth/auth_check.dart';
@@ -32,6 +35,9 @@ import 'package:cure_app/screens/order_tracking_screen.dart';
 import 'package:cure_app/screens/orders_screen.dart';
 import 'package:cure_app/screens/profile_screen.dart';
 import 'package:cure_app/splash_screen.dart';
+// ✅ استيراد واجهات الإدارة والمالية الجديدة
+import 'package:cure_app/screens/payout/transaction_history_screen.dart'; 
+import 'package:cure_app/screens/admin/nurse_settlement_screen.dart'; 
 
 // Utils
 import 'package:cure_app/utils/constants.dart';
@@ -44,6 +50,7 @@ class MyApp extends StatelessWidget {
     final authService = AuthService();
     final firestoreService = FirestoreService();
     final storageService = StorageService();
+    final discountService = DiscountService(firestoreService);
 
     return MultiProvider(
       providers: [
@@ -51,6 +58,7 @@ class MyApp extends StatelessWidget {
         Provider<AuthService>(create: (_) => authService),
         Provider<FirestoreService>(create: (_) => firestoreService),
         Provider<StorageService>(create: (_) => storageService),
+        Provider<DiscountService>(create: (_) => discountService), 
 
         // ChangeNotifier Providers
         ChangeNotifierProvider<AuthProvider>(
@@ -72,14 +80,26 @@ class MyApp extends StatelessWidget {
           create: (context) =>
               ActiveOrderProvider(context.read<FirestoreService>()),
         ),
+        // ✅ 1. إضافة مزود الإعدادات (لقراءة العمولة)
+        ChangeNotifierProvider<SettingsProvider>(
+          create: (context) => SettingsProvider(context.read<FirestoreService>()),
+        ),
+
 
         // Proxy Providers (that depend on other providers)
-        ChangeNotifierProxyProvider<AuthProvider, CartProvider>(
-          create: (context) =>
-              CartProvider(firestoreService, context.read<AuthProvider>()),
-          update: (context, authProvider, previous) =>
-              previous!..updateAuth(authProvider),
+        
+        // ✅ 2. تحديث CartProvider ليعتمد على SettingsProvider
+        ChangeNotifierProxyProvider2<AuthProvider, SettingsProvider, CartProvider>(
+          create: (context) => CartProvider(
+                firestoreService,
+                context.read<AuthProvider>(),
+                context.read<DiscountService>(),
+              ),
+          // ✅ 3. تمرير كلتا التبعيتين (Auth و Settings) إلى CartProvider
+          update: (context, authProvider, settingsProvider, previous) =>
+              previous!..updateDependencies(authProvider, settingsProvider),
         ),
+
         ChangeNotifierProxyProvider<AuthProvider, OrdersProvider>(
           create: (context) =>
               OrdersProvider(firestoreService, context.read<AuthProvider>()),
@@ -87,7 +107,7 @@ class MyApp extends StatelessWidget {
               previous!..updateAuth(authProvider),
         ),
 
-        // ✅ إضافة الـ Provider الخاص بالمحادثة
+        // ✅ Provider خاص بالمحادثة
         ChangeNotifierProxyProvider2<AuthProvider, ActiveOrderProvider,
             ChatProvider>(
           create: (context) => ChatProvider(
@@ -150,6 +170,10 @@ class MyApp extends StatelessWidget {
           profileRoute: (context) => const ProfileScreen(),
           editProfileRoute: (context) => const EditProfileScreen(),
           termsRoute: (context) => const TermsScreen(),
+          // ✅ إضافة مسارات النظام المالي الجديد
+          transactionHistoryRoute: (context) => const TransactionHistoryScreen(), 
+          adminSettlementRoute: (context) => const NurseSettlementScreen(), 
+          
           '/order-tracking': (context) {
             final orderId =
                 ModalRoute.of(context)!.settings.arguments as String;

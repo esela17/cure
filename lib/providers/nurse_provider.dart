@@ -1,7 +1,9 @@
+// lib/providers/nurse_provider.dart
+
 import 'dart:async';
-import 'package:cure_app/models/user_model.dart';
 import 'package:flutter/material.dart';
 import 'package:cure_app/models/order.dart';
+import 'package:cure_app/models/user_model.dart';
 import 'package:cure_app/services/firestore_service.dart';
 
 class NurseProvider with ChangeNotifier {
@@ -68,16 +70,25 @@ class NurseProvider with ChangeNotifier {
     });
   }
 
+  // ✅ دالة قبول الطلب
   Future<bool> acceptOrder(Order order, UserModel nurse) async {
     _isLoading = true;
     notifyListeners();
     try {
+      if (nurse.id.isEmpty) {
+        throw Exception("فشل تحديد معرف الممرض.");
+      }
+
       await _firestoreService.updateOrderStatus(order.id, {
         'status': 'accepted',
         'nurseId': nurse.id,
         'nurseName': nurse.name,
       });
+
+      // تحديث القوائم المحلية بعد قبول الطلب
       fetchPendingOrders();
+      if (nurse.id.isNotEmpty) fetchMyOrders(nurse.id);
+
       _isLoading = false;
       notifyListeners();
       return true;
@@ -113,10 +124,7 @@ class NurseProvider with ChangeNotifier {
     try {
       await _firestoreService
           .updateOrderStatus(order.id, {'status': 'arrived'});
-      // تحديث قائمة "طلباتي" لإعادة بناء الواجهة في شاشة التفاصيل
-      if (order.nurseId != null) {
-        fetchMyOrders(order.nurseId!);
-      }
+      if (order.nurseId != null) fetchMyOrders(order.nurseId!);
       _isLoading = false;
       notifyListeners();
       return true;
@@ -128,6 +136,7 @@ class NurseProvider with ChangeNotifier {
     }
   }
 
+  // ✅ دالة إكمال الطلب
   Future<bool> completeOrder(Order order) async {
     _isLoading = true;
     notifyListeners();
@@ -136,7 +145,6 @@ class NurseProvider with ChangeNotifier {
           .updateOrderStatus(order.id, {'status': 'completed'});
 
       if (order.nurseId != null) {
-        // زيادة عدد الوظائف المكتملة للممرض
         await _firestoreService.incrementNurseJobCount(order.nurseId!);
         fetchMyOrders(order.nurseId!);
       }

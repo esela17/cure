@@ -1,6 +1,7 @@
-// lib/services/firestore_service.dart
+// lib/services/firestore_service.dart (النسخة المكتملة)
 
 import 'package:cloud_firestore/cloud_firestore.dart' as firestore_package;
+import 'package:cloud_functions/cloud_functions.dart' as firestore_package;
 import 'package:cure_app/models/ad_banner.dart';
 import 'package:cure_app/models/category_shortcut.dart';
 import 'package:cure_app/models/order.dart';
@@ -8,13 +9,65 @@ import 'package:cure_app/models/review_model.dart';
 import 'package:cure_app/models/service.dart';
 import 'package:cure_app/models/user_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_functions/cloud_functions.dart'; 
+
+import '../models/coupon_model.dart';
+import '../models/app_settings.dart'; 
+import '../models/transaction_model.dart'; 
+
 
 class FirestoreService {
   final firestore_package.FirebaseFirestore _db =
       firestore_package.FirebaseFirestore.instance;
+  final firestore_package.FirebaseFunctions _functions =
+      firestore_package.FirebaseFunctions.instance; 
 
+
+  // --- SETTINGS FUNCTIONS ---
+  Stream<AppSettings> getAppSettingsStream() {
+    return _db
+        .collection('settings')
+        .doc('finance') 
+        .withConverter<AppSettings>(
+          fromFirestore: (snapshot, _) => AppSettings.fromFirestore(snapshot),
+          toFirestore: (settings, _) => {}, 
+        )
+        .snapshots()
+        .map((snapshot) {
+      if (!snapshot.exists || snapshot.data() == null) {
+        return AppSettings(platformCommissionRate: 0.0);
+      }
+      return snapshot.data()!;
+    });
+  }
+
+  // --- COUPON/DISCOUNT FUNCTIONS ---
+  
+  Future<CouponModel?> validateCouponCode(String code) async {
+    final querySnapshot = await _db
+        .collection('coupons')
+        .where('code', isEqualTo: code.toUpperCase())
+        .where('isActive', isEqualTo: true)
+        .limit(1)
+        .get();
+
+    if (querySnapshot.docs.isEmpty) return null;
+
+    final doc = querySnapshot.docs.first;
+    final coupon = CouponModel.fromFirestore(doc);
+
+    if (coupon.expiryDate.isBefore(DateTime.now())) return null;
+    if (coupon.usedCount >= coupon.maxUses) return null;
+    
+    return coupon;
+  }
+  
+  Future<CouponModel?> getCouponByCode(String code) {
+    return validateCouponCode(code);
+  }
+  
   // --- USER-RELATED FUNCTIONS ---
-
+  
   Future<void> addUser(UserModel user) async {
     await _db
         .collection('users')
@@ -65,7 +118,6 @@ class FirestoreService {
   // --- ORDER-RELATED FUNCTIONS ---
 
   Future<firestore_package.DocumentReference> addOrder(Order order) async {
-    // ✅✅✅ هذا هو السطر الذي تم تعديله - الحل النهائي للمشكلة ✅✅✅
     final docRef = await _db.collection('requests').add({
       ...order.toFirestore(),
       if (order.locationLat != null) 'locationLat': order.locationLat,
@@ -80,7 +132,6 @@ class FirestoreService {
 
   Future<void> updateOrderStatus(
       String orderId, Map<String, dynamic> dataToUpdate) async {
-    // تم تعديل اسم المجموعة هنا أيضاً ليتوافق مع باقي أجزاء التطبيق
     await _db.collection('requests').doc(orderId).update(dataToUpdate);
 
     if (dataToUpdate.containsKey('status') &&
@@ -91,9 +142,18 @@ class FirestoreService {
     }
   }
 
+  // ✅✨ الدالة الحاسمة التي تشغل المحاسبة (completeOrder)
+  Future<void> completeOrder(String orderId) async {
+    // هذا التحديث يشغل دالة processCashOrderCompletion في Firebase Functions
+    await _db.collection('requests').doc(orderId).update({
+      'status': 'completed',
+    });
+  }
+
+
   Stream<Order> getOrderStream(String orderId) {
     return _db
-        .collection('requests') // تعديل لتوحيد الاسم
+        .collection('requests') 
         .doc(orderId)
         .withConverter<Order>(
           fromFirestore: Order.fromFirestore,
@@ -110,7 +170,7 @@ class FirestoreService {
 
   Stream<List<Order>> getUserOrders(String userId) {
     return _db
-        .collection('requests') // تعديل لتوحيد الاسم
+        .collection('requests') 
         .where('userId', isEqualTo: userId)
         .orderBy('orderDate', descending: true)
         .withConverter<Order>(
@@ -123,7 +183,7 @@ class FirestoreService {
 
   Stream<List<Order>> getPendingOrders() {
     return _db
-        .collection('requests') // تعديل لتوحيد الاسم
+        .collection('requests') 
         .where('status', isEqualTo: 'pending')
         .orderBy('orderDate', descending: true)
         .withConverter<Order>(
@@ -136,7 +196,7 @@ class FirestoreService {
 
   Stream<List<Order>> getOrdersForNurse(String nurseId) {
     return _db
-        .collection('requests') // تعديل لتوحيد الاسم
+        .collection('requests') 
         .where('nurseId', isEqualTo: nurseId)
         .orderBy('orderDate', descending: true)
         .withConverter<Order>(
@@ -148,13 +208,12 @@ class FirestoreService {
   }
 
   // --- ADVERTISEMENT & CATEGORY FUNCTIONS ---
-
   Stream<List<AdBanner>> getAdvertisements() {
     return _db
         .collection('advertisements')
         .withConverter<AdBanner>(
           fromFirestore: (snapshot, _) => AdBanner.fromFirestore(snapshot),
-          toFirestore: (ad, _) => {}, // Not needed for reading
+          toFirestore: (ad, _) => {}, 
         )
         .snapshots()
         .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
@@ -167,14 +226,13 @@ class FirestoreService {
         .withConverter<CategoryShortcut>(
           fromFirestore: (snapshot, _) =>
               CategoryShortcut.fromFirestore(snapshot),
-          toFirestore: (category, _) => {}, // Not needed for reading
+          toFirestore: (category, _) => {}, 
         )
         .snapshots()
         .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
   }
 
   // --- REVIEW-RELATED FUNCTIONS ---
-
   Future<void> submitReview({
     required String orderId,
     required String nurseId,
@@ -184,7 +242,7 @@ class FirestoreService {
   }) async {
     final nurseRef = _db.collection('users').doc(nurseId);
     final orderRef =
-        _db.collection('requests').doc(orderId); // تعديل لتوحيد الاسم
+        _db.collection('requests').doc(orderId); 
     final reviewRef = nurseRef.collection('reviews').doc();
 
     return _db.runTransaction((transaction) async {
@@ -229,5 +287,78 @@ class FirestoreService {
     return reviewsSnapshot.docs
         .map((doc) => ReviewModel.fromFirestore(doc))
         .toList();
+  }
+  
+  // --- ADMIN & PAYOUT FUNCTIONS ---
+
+  Future<double> callManualSettlement({
+    required String nurseId,
+    required double amount,
+    String? note,
+  }) async {
+    try {
+      final HttpsCallable callable = _functions.httpsCallable('manualBalanceSettlement');
+      
+      final result = await callable.call(<String, dynamic>{
+        'nurseId': nurseId,
+        'amount': amount,
+        'note': note,
+      });
+
+      if (result.data != null && result.data['success'] == true) {
+        return (result.data['newBalance'] as num?)?.toDouble() ?? 0.0;
+      }
+      
+      throw Exception('فشلت عملية تسوية الرصيد: استجابة غير متوقعة.');
+
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception('خطأ في دالة التسوية: ${e.message}');
+    } catch (e) {
+      throw Exception('فشل الاتصال بخدمة التسوية: $e');
+    }
+  }
+
+  Future<double> callProcessNursePayout({
+    required String nurseId,
+    required double amount,
+    String? note,
+  }) async {
+    try {
+      final HttpsCallable callable = _functions.httpsCallable('processNursePayout');
+      
+      final result = await callable.call(<String, dynamic>{
+        'nurseId': nurseId,
+        'amount': amount,
+        'note': note,
+      });
+
+      if (result.data != null && result.data['success'] == true) {
+        return (result.data['newBalance'] as num?)?.toDouble() ?? 0.0;
+      }
+      
+      throw Exception('فشلت عملية صرف المستحقات: استجابة غير متوقعة.');
+
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception('خطأ في دالة الصرف: ${e.message}');
+    } catch (e) {
+      throw Exception('فشل الاتصال بخدمة الصرف: $e');
+    }
+  }
+
+  // --- TRANSACTION HISTORY FUNCTIONS ---
+  firestore_package.Query getTransactionsQuery() {
+    return _db.collection('transactions').orderBy('timestamp', descending: true);
+  }
+
+  Stream<List<TransactionModel>> getTransactionsStream({firestore_package.Query? query}) {
+    final effectiveQuery = query ?? getTransactionsQuery();
+
+    return effectiveQuery
+        .withConverter<TransactionModel>(
+          fromFirestore: (snapshot, _) => TransactionModel.fromFirestore(snapshot),
+          toFirestore: (model, _) => model.toFirestore(),
+        )
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
   }
 }
