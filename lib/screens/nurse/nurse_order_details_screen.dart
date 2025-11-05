@@ -19,46 +19,20 @@ import 'package:cure_app/widgets/loading_indicator.dart';
 ///
 /// 1️⃣ حالات Order Status:
 ///    ├─ pending: في انتظار الموافقة
-///    ├─ accepted: تم قبول الطلب
+///    ├─ accepted: تم قبول الطلب → 🆕 يظهر تنبيه "تحرك الآن" إذا طلب المريض
 ///    ├─ arrived: وصل الممرض
 ///    ├─ completed: تم إنهاء الخدمة
 ///    ├─ rejected: تم رفض الطلب
 ///    └─ cancelled: تم إلغاء الطلب
 ///
-/// 2️⃣ حالات Payment Method:
+/// 2️⃣ 🆕 حالات التحرك الجديدة:
+///    ├─ isNurseMovingRequested: المريض طلب تأكيد التحرك
+///    ├─ isNurseMovingConfirmed: الممرض أكد أنه يتحرك
+///    └─ patientConfirmedNurseMoving: المريض أكد رؤية الممرض يتحرك
+///
+/// 3️⃣ حالات Payment Method:
 ///    ├─ cash: دفع نقدي
 ///    └─ online: دفع إلكتروني
-///
-/// 3️⃣ حالات Service Provider Type:
-///    ├─ nurseMale: ممرض (ذكر)
-///    ├─ nurseFemale: ممرضة (أنثى)
-///    └─ null: غير محدد
-///
-/// 4️⃣ حالات الأزرار (Status × Payment Method):
-///    ├─ pending + any payment → [قبول] [رفض]
-///    ├─ accepted + any payment → [تأكيد الوصول]
-///    ├─ arrived + cash → [تأكيد استلام الدفع النقدي]
-///    ├─ arrived + online → [إنهاء الخدمة]
-///    └─ completed/rejected/cancelled → عرض الحالة فقط
-///
-/// 5️⃣ حالات البيانات الاختيارية:
-///    ├─ appointmentDate: موجود ✅ / غير موجود ❌
-///    ├─ serviceProviderType: موجود ✅ / غير موجود ❌
-///    ├─ notes: موجود وليس فارغ ✅ / فارغ أو null ❌
-///    ├─ rejectReason: موجود وليس فارغ ✅ / فارغ أو null ❌
-///    ├─ discountAmount: أكبر من 0 ✅ / يساوي 0 ❌
-///    └─ locationLat/Lng: موجود ✅ / غير موجود ❌
-///
-/// 6️⃣ حالات Stream:
-///    ├─ ConnectionState.waiting → Loading
-///    ├─ hasError → Error Screen
-///    ├─ !hasData → No Data Screen
-///    └─ hasData → Display Order
-///
-/// 7️⃣ حالات العمليات (Operations):
-///    ├─ Processing → عرض Loading
-///    ├─ Success → عرض رسالة نجاح
-///    └─ Error → عرض رسالة خطأ
 ///
 /// ═══════════════════════════════════════════════════════════════════════════
 
@@ -75,7 +49,9 @@ class NurseOrderDetailsScreen extends StatefulWidget {
 class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
     with TickerProviderStateMixin {
   late AnimationController _fadeController;
+  late AnimationController _pulseController;
   late Animation<double> _fadeAnimation;
+  late Animation<double> _pulseAnimation;
   bool _isProcessingCash = false;
   bool _isProcessingAction = false;
 
@@ -100,39 +76,229 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
       CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
     );
     _fadeController.forward();
+
+    // 🆕 Animation للتنبيه النابض
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.08).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+    _pulseController.repeat(reverse: true);
   }
 
   @override
   void dispose() {
     _fadeController.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // 💰 SECTION: Cash Payment Handling (معالجة الدفع النقدي)
+  // 🆕 SECTION: Movement Confirmation (تأكيد التحرك)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// ✅ تأكيد استلام الدفع النقدي مع عرض تفاصيل العمولة
-  ///
-  /// Cases:
-  /// - User confirms → Process payment → Success/Failure
-  /// - User cancels → Do nothing
-  Future<void> _confirmCashCompletion(BuildContext context, Order order) async {
+  /// تأكيد التحرك من الممرض
+  Future<void> _confirmNurseMoving(BuildContext context, Order order) async {
     final firestoreService = context.read<FirestoreService>();
-    final commission =
-        _calculateCommission(order.finalPrice, order.platformCommissionRate);
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.directions_car, color: kPrimaryColor),
+            const SizedBox(width: 8),
+            const Text('تأكيد التحرك'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: kPrimaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Icon(Icons.info_outline, color: kPrimaryColor, size: 40),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'هل أنت متحرك الآن نحو المريض؟',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'سيتم إبلاغ المريض بأنك في طريقك إليه',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[600],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('ليس بعد'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kPrimaryColor,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            icon: const Icon(Icons.check_circle),
+            label: const Text('نعم، متحرك الآن'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isProcessingAction = true);
+    try {
+      await firestoreService.updateOrderStatus(order.id, {
+        'isNurseMovingConfirmed': true,
+        'nurseMovingConfirmedAt': DateTime.now(),
+      });
+
+      if (mounted) {
+        showSnackBar(context, '✅ تم تأكيد التحرك للمريض');
+      }
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(context, 'فشل في تأكيد التحرك: ${e.toString()} ❌',
+            isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessingAction = false);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 💰 SECTION: Enhanced Cash Payment Flow (تدفق الدفع النقدي المحسن)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// 🆕 طلب تسليم النقدية من المريض
+  Future<void> _requestCashPaymentFromPatient(BuildContext context, Order order) async {
+    final firestoreService = context.read<FirestoreService>();
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.payment, color: Colors.orange),
+            const SizedBox(width: 8),
+            const Text('طلب تسليم المبلغ'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Icon(Icons.account_balance_wallet, color: Colors.orange, size: 40),
+                  const SizedBox(height: 12),
+                  Text(
+                    'طلب تسليم ${order.finalPrice.toStringAsFixed(2)} ج.م',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'سيتم إرسال طلب الدفع للمريض لتسليم المبلغ النقدي',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[600],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('ليس الآن'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            icon: const Icon(Icons.send),
+            label: const Text('إرسال الطلب'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isProcessingAction = true);
+    try {
+      await firestoreService.updateOrderStatus(order.id, {
+        'isCashPaymentRequested': true,
+        'cashPaymentRequestedAt': DateTime.now(),
+      });
+
+      if (mounted) {
+        showSnackBar(context, '✅ تم إرسال طلب التسليم النقدي للمريض');
+      }
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(context, 'فشل في إرسال طلب الدفع: ${e.toString()} ❌',
+            isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessingAction = false);
+    }
+  }
+
+  /// 🆕 تأكيد استلام النقدية بعد تسليم المريض
+  Future<void> _confirmCashReceipt(BuildContext context, Order order) async {
+    final firestoreService = context.read<FirestoreService>();
+    final commission = _calculateCommission(order.finalPrice, order.platformCommissionRate);
     final nurseEarnings = order.finalPrice - commission;
 
-    // Case 1: عرض dialog التأكيد
     final confirm = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: Row(
           children: [
-            Icon(Icons.handshake_outlined, color: kPrimaryColor),
+            Icon(Icons.verified_user, color: Colors.green),
             const SizedBox(width: 8),
-            const Text('تأكيد استلام الدفع النقدي'),
+            const Text('تأكيد استلام المبلغ'),
           ],
         ),
         content: SingleChildScrollView(
@@ -140,24 +306,24 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // معلومات الاستلام
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
+                  color: Colors.green.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.shade200),
+                  border: Border.all(color: Colors.green.shade200),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline,
-                        color: Colors.orange.shade700, size: 20),
+                    Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'تأكد من استلام المبلغ كاملاً قبل التأكيد',
+                        'هل استلمت المبلغ النقدي من المريض؟',
                         style: TextStyle(
-                          color: Colors.orange.shade900,
-                          fontSize: 12,
+                          color: Colors.green.shade900,
+                          fontSize: 14,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -166,17 +332,17 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
                 ),
               ),
               const SizedBox(height: 16),
-              _buildPaymentDetailRow('المبلغ المستحق:',
-                  '${order.finalPrice.toStringAsFixed(2)} ج.م',
-                  isBold: true),
+              
+              // تفاصيل المبلغ
+              _buildPaymentDetailRow('المبلغ المستلم:', 
+                  '${order.finalPrice.toStringAsFixed(2)} ج.م', isBold: true),
               const Divider(height: 20),
-              _buildPaymentDetailRow(
-                  'عمولة المنصة (${order.platformCommissionRate}%):',
-                  '${commission.toStringAsFixed(2)} ج.م',
-                  color: Colors.red.shade700),
-              _buildPaymentDetailRow(
-                  'صافي ربحك:', '${nurseEarnings.toStringAsFixed(2)} ج.م',
+              _buildPaymentDetailRow('عمولة المنصة:', 
+                  '${commission.toStringAsFixed(2)} ج.م', color: Colors.red.shade700),
+              _buildPaymentDetailRow('صافي ربحك:', 
+                  '${nurseEarnings.toStringAsFixed(2)} ج.م', 
                   color: kPrimaryColor, isBold: true),
+              
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -185,7 +351,7 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '💡 سيتم إضافة صافي المبلغ إلى رصيدك فوراً',
+                  '💡 سيتم إضافة ${nurseEarnings.toStringAsFixed(2)} ج.م إلى رصيدك',
                   style: TextStyle(
                     color: kPrimaryColor,
                     fontSize: 12,
@@ -199,39 +365,44 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('إلغاء'),
+            child: const Text('لم أستلم بعد'),
           ),
           ElevatedButton.icon(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: kPrimaryColor,
+              backgroundColor: Colors.green,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             ),
-            icon: const Icon(Icons.check_circle),
-            label: const Text('تأكيد الاستلام'),
+            icon: const Icon(Icons.verified),
+            label: const Text('نعم، استلمت المبلغ'),
           ),
         ],
       ),
     );
 
-    // Case 2: User cancelled - لا تفعل شيء
     if (confirm != true) return;
 
-    // Case 3: Processing payment
     setState(() => _isProcessingCash = true);
     try {
+      // تحديث حالة الدفع
+      await firestoreService.updateOrderStatus(order.id, {
+        'isPaymentConfirmedByNurse': true,
+        'nursePaymentConfirmedAt': DateTime.now(),
+        'isCashPaymentReceived': true,
+        'cashPaymentReceivedAt': DateTime.now(),
+      });
+
+      // إكمال الطلب
       await firestoreService.completeOrder(order.id);
 
-      // Case 4: Success
       if (mounted) {
-        showSnackBar(context,
-            '✅ تم تسجيل الدفع وإضافة ${nurseEarnings.toStringAsFixed(2)} ج.م لرصيدك');
+        showSnackBar(context, 
+            '✅ تم تأكيد الاستلام وإضافة ${nurseEarnings.toStringAsFixed(2)} ج.م لرصيدك');
         Navigator.pop(context, true);
       }
     } catch (e) {
-      // Case 5: Failure
       if (mounted) {
-        showSnackBar(context, 'فشل تسجيل الدفع: ${e.toString()} ❌',
+        showSnackBar(context, 'فشل في تأكيد الاستلام: ${e.toString()} ❌',
             isError: true);
       }
     } finally {
@@ -239,7 +410,215 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
     }
   }
 
-  /// دالة مساعدة لعرض تفاصيل الدفع في الـ Dialog
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🚨 SECTION: Arrival Confirmation Dialog (حوار تأكيد الوصول)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// حوار تأكيد الوصول مع خيارات متعددة
+  Future<void> _showArrivalConfirmationDialog(BuildContext context, Order order) async {
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.location_on, color: kPrimaryColor),
+            const SizedBox(width: 8),
+            const Text('تأكيد الوصول'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: kPrimaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Icon(Icons.question_mark, color: kPrimaryColor, size: 40),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'هل أنت متأكد من وصولك للموقع الصحيح؟',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'يرجى التأكد من:\n• المطابقة مع العنوان المطلوب\n• وجود المريض\n• صحة الموقع',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[600],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          // زر "لم أصل" - إلغاء الطلب
+          TextButton.icon(
+            onPressed: () => Navigator.pop(ctx, 'not_arrived'),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            icon: const Icon(Icons.close),
+            label: const Text('لم أصل'),
+          ),
+          
+          // زر "تأكيد الوصول" - متابعة الخدمة
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, 'arrived'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kPrimaryColor,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            icon: const Icon(Icons.check_circle),
+            label: const Text('تأكيد الوصول'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == 'not_arrived') {
+      await _showNotArrivedReasonDialog(context, order);
+    } else if (result == 'arrived') {
+      await _confirmArrival(context, order);
+    }
+  }
+
+  /// حوار إدخال سبب عدم الوصول
+  Future<void> _showNotArrivedReasonDialog(BuildContext context, Order order) async {
+    String reason = '';
+    
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.warning, color: Colors.orange),
+              const SizedBox(width: 8),
+              const Text('سبب عدم الوصول'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'يرجى اختيار أو كتابة سبب عدم وصولك للموقع:',
+                style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+              ),
+              const SizedBox(height: 16),
+              
+              // خيارات سريعة
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildReasonChip('العنوان غير صحيح', reason, setState),
+                  _buildReasonChip('المريض غير متواجد', reason, setState),
+                  _buildReasonChip('المكان مغلق', reason, setState),
+                  _buildReasonChip('مشكلة في الاتصال', reason, setState),
+                  _buildReasonChip('سبب آخر', reason, setState),
+                ],
+              ),
+              
+              const SizedBox(height: 16),
+              
+              // حقل النص لسبب مخصص
+              TextField(
+                onChanged: (value) {
+                  setState(() => reason = value);
+                },
+                decoration: InputDecoration(
+                  hintText: 'أو اكتب السبب يدوياً...',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: reason.isEmpty ? null : () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('تأكيد الإبلاغ'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirm == true && reason.isNotEmpty) {
+      setState(() => _isProcessingAction = true);
+      try {
+        final nurseProvider = context.read<NurseProvider>();
+        final success = await nurseProvider.reportNotArrived(order, reason);
+        
+        if (success && mounted) {
+          showSnackBar(context, '✅ تم الإبلاغ عن عدم الوصول وإلغاء الطلب');
+          Navigator.pop(context);
+        } else if (mounted) {
+          showSnackBar(context, nurseProvider.errorMessage ?? 'حدث خطأ', isError: true);
+        }
+      } catch (e) {
+        if (mounted) {
+          showSnackBar(context, 'حدث خطأ: ${e.toString()}', isError: true);
+        }
+      } finally {
+        if (mounted) setState(() => _isProcessingAction = false);
+      }
+    }
+  }
+
+  /// زر سبب سريع
+  Widget _buildReasonChip(String text, String selectedReason, Function setState) {
+    final isSelected = selectedReason == text;
+    return ChoiceChip(
+      label: Text(text, style: TextStyle(fontSize: 12)),
+      selected: isSelected,
+      onSelected: (selected) {
+        setState(() => selectedReason = selected ? text : '');
+      },
+      selectedColor: Colors.red.withOpacity(0.2),
+      labelStyle: TextStyle(color: isSelected ? Colors.red : Colors.black87),
+    );
+  }
+
+  /// تأكيد الوصول العادي
+  Future<void> _confirmArrival(BuildContext context, Order order) async {
+    setState(() => _isProcessingAction = true);
+    try {
+      final nurseProvider = context.read<NurseProvider>();
+      final success = await nurseProvider.markAsArrived(order);
+      
+      if (success && mounted) {
+        showSnackBar(context, '✅ تم تأكيد الوصول بنجاح');
+      } else if (mounted) {
+        showSnackBar(context, nurseProvider.errorMessage ?? 'حدث خطأ', isError: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(context, 'حدث خطأ: ${e.toString()}', isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessingAction = false);
+    }
+  }
+
   Widget _buildPaymentDetailRow(String label, String value,
       {bool isBold = false, Color? color}) {
     return Padding(
@@ -272,25 +651,18 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
   // 🧮 SECTION: Calculations & Utilities
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// حساب العمولة
   double _calculateCommission(double finalPrice, double commissionRate) {
     return finalPrice * (commissionRate / 100);
   }
 
-  /// الحصول على لون حسب طريقة الدفع
-  /// Cases: cash → orange, online → primary color
   Color _getPaymentMethodColor(String paymentMethod) {
     return paymentMethod == paymentMethodCash ? Colors.orange : kPrimaryColor;
   }
 
-  /// الحصول على أيقونة حسب طريقة الدفع
-  /// Cases: cash → money icon, online → credit card icon
   IconData _getPaymentMethodIcon(String paymentMethod) {
     return paymentMethod == paymentMethodCash ? Icons.money : Icons.credit_card;
   }
 
-  /// تحويل نوع مقدم الخدمة إلى نص عربي
-  /// Cases: nurseMale, nurseFemale, null, other
   String _getServiceProviderTypeText(String? type) {
     if (type == null) return 'غير محدد';
 
@@ -304,7 +676,6 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
     }
   }
 
-  /// الحصول على نص طريقة الدفع بالعربية
   String _getPaymentMethodText(String paymentMethod) {
     return paymentMethod == paymentMethodCash ? 'نقدي 💵' : 'إلكتروني 💳';
   }
@@ -337,16 +708,10 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
       body: StreamBuilder<Order>(
         stream: firestoreService.getOrderStream(widget.initialOrder.id),
         builder: (context, snapshot) {
-          // ═════════════════════════════════════════════════════════════════
-          // 📡 Stream State Cases (حالات الـ Stream)
-          // ═════════════════════════════════════════════════════════════════
-
-          // Case 1: Loading state
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: LoadingIndicator());
           }
 
-          // Case 2: Error state
           if (snapshot.hasError) {
             return Center(
               child: Column(
@@ -370,25 +735,131 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
             );
           }
 
-          // Case 3: No data
           if (!snapshot.hasData) {
             return const Center(
               child: Text('الطلب غير موجود', style: TextStyle(fontSize: 16)),
             );
           }
 
-          // Case 4: Data loaded successfully
           final order = snapshot.data!;
+
+          // ═══════════════════════════════════════════════════════════════════
+          // 🆕 تحديد ما إذا كان يجب عرض بانر التحرك
+          // ═══════════════════════════════════════════════════════════════════
+          final bool showMovementBanner = order.status == statusAccepted &&
+              order.isNurseMovingRequested == true &&
+              order.isNurseMovingConfirmed != true;
 
           // تحديد ما إذا كان يجب عرض بانر الدفع النقدي
           final bool showCashPaymentBanner = order.status == statusArrived &&
-              order.paymentMethod == paymentMethodCash;
+              order.paymentMethod == paymentMethodCash &&
+              order.isPaymentConfirmedByNurse != true;
 
           return FadeTransition(
             opacity: _fadeAnimation,
             child: Column(
               children: [
-                // بانر تنبيه الدفع النقدي (فقط في حالة arrived + cash)
+                // ═════════════════════════════════════════════════════════════
+                // 🆕 بانر تنبيه التحرك (أولوية عليا)
+                // ═════════════════════════════════════════════════════════════
+                if (showMovementBanner)
+                  ScaleTransition(
+                    scale: _pulseAnimation,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 16, horizontal: 16),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            kPrimaryColor,
+                            kPrimaryColor.withOpacity(0.8)
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: kPrimaryColor.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.directions_car,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '🚨 المريض ينتظر تأكيدك',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  'يرجى تأكيد أنك متحرك الآن',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: _isProcessingAction
+                                ? null
+                                : () => _confirmNurseMoving(context, order),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: kPrimaryColor,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 8),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: _isProcessingAction
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          kPrimaryColor),
+                                    ),
+                                  )
+                                : const Text(
+                                    'تحرك الآن',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                // بانر تنبيه الدفع النقدي
                 if (showCashPaymentBanner)
                   Container(
                     width: double.infinity,
@@ -557,23 +1028,19 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
                     _buildCompactRow(
                         'تاريخ الطلب', formatDateTime(order.orderDate)),
 
-                    // Case: يوجد موعد محدد
                     if (order.appointmentDate != null)
                       _buildCompactRow('موعد الخدمة',
                           formatDateTime(order.appointmentDate!)),
 
-                    // Case: يوجد تفضيل نوع الممرض
                     if (order.serviceProviderType != null)
                       _buildCompactRow(
                           'التفضيل',
                           _getServiceProviderTypeText(
                               order.serviceProviderType)),
 
-                    // Case: يوجد ملاحظات
                     if (order.notes != null && order.notes!.isNotEmpty)
                       _buildCompactRow('ملاحظات', order.notes!, isNote: true),
 
-                    // Case: يوجد سبب رفض
                     if (order.rejectReason != null &&
                         order.rejectReason!.isNotEmpty)
                       _buildCompactRow('سبب الرفض', order.rejectReason!,
@@ -585,44 +1052,9 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
                 const SizedBox(height: 16),
 
                 // ═════════════════════════════════════════════════════════════
-                // 🎛️ الأزرار حسب حالة الطلب وطريقة الدفع
+                // 🎛️ الأزرار حسب حالة الطلب
                 // ═════════════════════════════════════════════════════════════
-                if (order.status == statusArrived &&
-                    order.paymentMethod == paymentMethodCash)
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _isProcessingCash
-                          ? null
-                          : () => _confirmCashCompletion(context, order),
-                      icon: _isProcessingCash
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Icon(Icons.handshake_outlined),
-                      label: Text(
-                        _isProcessingCash
-                            ? 'جاري المعالجة...'
-                            : 'تأكيد استلام ${order.finalPrice.toStringAsFixed(2)} ج.م',
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange.shade700,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: _isProcessingCash ? 0 : 2,
-                      ),
-                    ),
-                  )
-                else
-                  _buildActionButtons(context, order),
+                _buildActionButtons(context, order),
               ],
             ),
           ),
@@ -680,7 +1112,6 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
           _buildFinancialRow(
               'السعر الإجمالي', '${order.totalPrice.toStringAsFixed(2)} ج.م'),
 
-          // Case: يوجد خصم
           if (order.discountAmount > 0)
             _buildFinancialRow(
                 'الخصم', '-${order.discountAmount.toStringAsFixed(2)} ج.م'),
@@ -1012,7 +1443,6 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
     final nurseProvider = Provider.of<NurseProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    // Case: جاري معالجة عملية
     if (_isProcessingAction) {
       return Container(
         height: 50,
@@ -1026,7 +1456,6 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
       );
     }
 
-    // تحديد الأزرار حسب الحالة
     switch (order.status) {
       // ═══════════════════════════════════════════════════════════════════════
       // Case 1: Pending - في انتظار الموافقة
@@ -1078,7 +1507,7 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
                   if (result != null && result.isNotEmpty) {
                     setState(() => _isProcessingAction = true);
                     try {
-                      final success = await nurseProvider.rejectOrder(order);
+                      final success = await nurseProvider.rejectOrder(order, result);
                       if (success && mounted) {
                         showSnackBar(context, 'تم رفض الطلب');
                         Navigator.of(context).pop();
@@ -1106,39 +1535,173 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
       // Case 2: Accepted - تم القبول
       // ═══════════════════════════════════════════════════════════════════════
       case statusAccepted:
-        return _buildCompactButton(
-          label: 'تأكيد الوصول',
-          icon: Icons.location_on,
-          color: kAccentColor,
-          onPressed: () async {
-            setState(() => _isProcessingAction = true);
-            try {
-              final success = await nurseProvider.markAsArrived(order);
-              if (success && mounted) {
-                showSnackBar(context, '✅ تم تأكيد الوصول بنجاح');
-              } else if (mounted) {
-                showSnackBar(context, nurseProvider.errorMessage ?? 'حدث خطأ',
-                    isError: true);
-              }
-            } catch (e) {
-              if (mounted) {
-                showSnackBar(context, 'حدث خطأ: ${e.toString()}',
-                    isError: true);
-              }
-            } finally {
-              if (mounted) setState(() => _isProcessingAction = false);
-            }
-          },
-          fullWidth: true,
+        return Column(
+          children: [
+            // 🆕 إذا المريض أكد أنه يراك تتحرك
+            if (order.patientConfirmedNurseMoving == true)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle, 
+                      color: Colors.green.shade700, 
+                      size: 20
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'المريض أكد أنك في طريقك ✅',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.green.shade900,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // زر تأكيد الوصول مع الخيارات
+            _buildCompactButton(
+              label: 'تأكيد الوصول',
+              icon: Icons.location_on,
+              color: kAccentColor,
+              onPressed: _isProcessingAction
+                  ? null
+                  : () => _showArrivalConfirmationDialog(context, order),
+              fullWidth: true,
+            ),
+          ],
         );
 
       // ═══════════════════════════════════════════════════════════════════════
       // Case 3: Arrived - وصل الممرض
-      // Sub-cases: cash payment (handled above) / online payment
       // ═══════════════════════════════════════════════════════════════════════
       case statusArrived:
-        // Sub-case: Online payment (الدفع الإلكتروني)
-        if (order.paymentMethod != paymentMethodCash) {
+        if (order.paymentMethod == paymentMethodCash) {
+          // 🆕 التدفق المحسن للدفع النقدي
+          return Column(
+            children: [
+              // حالة: لم يطلب الدفع بعد
+              if (order.isCashPaymentRequested != true)
+                _buildCompactButton(
+                  label: 'طلب تسليم ${order.finalPrice.toStringAsFixed(2)} ج.م',
+                  icon: Icons.payment,
+                  color: Colors.orange.shade700,
+                  onPressed: _isProcessingAction
+                      ? null
+                      : () => _requestCashPaymentFromPatient(context, order),
+                  fullWidth: true,
+                ),
+
+              // حالة: تم طلب الدفع وانتظار المريض
+              if (order.isCashPaymentRequested == true && 
+                  order.isPaymentConfirmedByPatient != true)
+                Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.access_time, color: Colors.orange.shade700, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'بانتظار تسليم المريض للمبلغ',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.orange.shade900,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                Text(
+                                  '${order.finalPrice.toStringAsFixed(2)} ج.م',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.orange.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _buildCompactButton(
+                      label: 'تأكيد استلام المبلغ',
+                      icon: Icons.verified,
+                      color: Colors.green,
+                      onPressed: _isProcessingCash
+                          ? null
+                          : () => _confirmCashReceipt(context, order),
+                      fullWidth: true,
+                    ),
+                  ],
+                ),
+
+              // حالة: المريض أكد التسليم
+              if (order.isPaymentConfirmedByPatient == true)
+                Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'المريض أكد تسليم المبلغ ✅',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.green.shade900,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _buildCompactButton(
+                      label: 'تأكيد استلام ${order.finalPrice.toStringAsFixed(2)} ج.م',
+                      icon: Icons.verified_user,
+                      color: Colors.green,
+                      onPressed: _isProcessingCash
+                          ? null
+                          : () => _confirmCashReceipt(context, order),
+                      fullWidth: true,
+                    ),
+                  ],
+                ),
+            ],
+          );
+        } else {
+          // حالة الدفع الإلكتروني
           return _buildCompactButton(
             label: 'إنهاء الخدمة',
             icon: Icons.check_circle,
@@ -1166,8 +1729,6 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
             fullWidth: true,
           );
         }
-        // Sub-case: Cash payment (يتم معالجته في الأعلى)
-        return const SizedBox.shrink();
 
       // ═══════════════════════════════════════════════════════════════════════
       // Case 4: Completed - تم الإنجاز
@@ -1332,54 +1893,64 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
   }
 
   Widget _buildCompactButton({
-    required String label,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onPressed,
-    bool fullWidth = false,
-  }) {
-    return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        width: fullWidth ? double.infinity : null,
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(8),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.3),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+  required String label,
+  required IconData icon,
+  required Color color,
+  required VoidCallback? onPressed,
+  bool fullWidth = false,
+}) {
+  return GestureDetector(
+    onTap: onPressed,
+    child: Container(
+      width: fullWidth ? double.infinity : null,
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      decoration: BoxDecoration(
+        color: onPressed == null ? Colors.grey : color,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: onPressed == null 
+            ? [] 
+            : [
+                BoxShadow(
+                  color: color.withOpacity(0.3),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+      ),
+      child: Row(
+        mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (onPressed != null) 
             Icon(icon, color: Colors.white, size: 18),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
+          if (onPressed == null)
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
                 color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
               ),
             ),
-          ],
-        ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 🎨 SECTION: Status Styling Helpers (تنسيق الألوان والأيقونات)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// تحديد تدرج اللون حسب الحالة
-  /// All Status Cases: pending, accepted, arrived, completed, rejected, cancelled, unknown
   List<Color> _getStatusGradient(String status) {
     switch (status) {
       case statusPending:
@@ -1399,7 +1970,6 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
     }
   }
 
-  /// تحديد الأيقونة حسب الحالة
   IconData _getStatusIcon(String status) {
     switch (status) {
       case statusPending:
@@ -1419,7 +1989,6 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
     }
   }
 
-  /// تحديد النص العربي حسب الحالة
   String _getStatusText(String status) {
     switch (status) {
       case statusPending:
@@ -1439,7 +2008,3 @@ class _NurseOrderDetailsScreenState extends State<NurseOrderDetailsScreen>
     }
   }
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ✅ END OF FILE - الكود جاهز للاستخدام
-// ═══════════════════════════════════════════════════════════════════════════

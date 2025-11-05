@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cure_app/providers/orders_provider.dart';
 import 'package:cure_app/utils/helpers.dart';
+import 'package:cure_app/utils/constants.dart'; // ✅ لاستخدام ثوابت ودوال الحالة وقوائم الأسباب
 import 'dart:ui';
 
 class OrdersScreen extends StatefulWidget {
@@ -59,35 +60,594 @@ class _OrdersScreenState extends State<OrdersScreen>
     _slideController.dispose();
     super.dispose();
   }
+  
+  // =========================================================================
+  // 💡 دوال الحوار الجديدة (Dialogs) مع إدخال السبب
+  // =========================================================================
 
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'pending':
-        return const Color(0xFFFF9500);
-      case 'accepted':
-        return const Color(0xFF007AFF);
-      case 'completed':
-        return const Color(0xFF34C759);
-      case 'rejected':
-        return const Color(0xFFFF3B30);
-      default:
-        return const Color(0xFF8E8E93);
-    }
+  // 1. دالة الحوار الخاصة بالإلغاء
+  void _showCancelDialog(BuildContext context, dynamic order) {
+    final ordersProvider = Provider.of<OrdersProvider>(context, listen: false);
+    String? selectedReason = patientCancellationReasons.first;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('إلغاء الطلب', style: TextStyle(color: kErrorColor)),
+        content: _ActionDialogContent(
+          reasonsList: patientCancellationReasons,
+          onReasonChanged: (reason) => selectedReason = reason,
+          isComplaint: false,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('تراجع'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              if (selectedReason != null) {
+                ordersProvider.cancelOrder(order.id, selectedReason!, context);
+              } else {
+                showSnackBar(context, 'الرجاء اختيار سبب للإلغاء.', isError: true);
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: kErrorColor),
+            child: const Text('تأكيد الإلغاء'),
+          ),
+        ],
+      ),
+    );
   }
 
-  String _getStatusText(String status) {
-    switch (status) {
-      case 'pending':
-        return 'في الانتظار';
-      case 'accepted':
-        return 'مقبول';
-      case 'completed':
-        return 'مكتمل';
-      case 'rejected':
-        return 'مرفوض';
-      default:
-        return status;
+  // 2. دالة الحوار الخاصة بطلب الاسترداد
+  void _showRefundDialog(BuildContext context, dynamic order) {
+    final ordersProvider = Provider.of<OrdersProvider>(context, listen: false);
+    // يمكن استخدام أسباب 'service_incomplete' كأسباب أولية للاسترداد من جهة المريض
+    String? selectedReason = incompleteServiceReasons.first;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('طلب استرداد', style: TextStyle(color: Colors.purple)),
+        content: _ActionDialogContent(
+          reasonsList: incompleteServiceReasons,
+          onReasonChanged: (reason) => selectedReason = reason,
+          isComplaint: true, // يمكن استخدام حقل النص للإضافة
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+               if (selectedReason != null) {
+                ordersProvider.requestRefund(order.id, selectedReason!, context);
+              } else {
+                showSnackBar(context, 'الرجاء اختيار سبب لطلب الاسترداد.', isError: true);
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
+            child: const Text('تأكيد الطلب'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 3. دالة الحوار الخاصة بتقديم شكوى/نزاع
+  void _showComplaintDialog(BuildContext context, dynamic order) {
+    final ordersProvider = Provider.of<OrdersProvider>(context, listen: false);
+    // نستخدم الأسباب العامة أو نركز على حقل الإدخال
+    String? complaintDetails = ''; 
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تقديم شكوى/نزاع', style: TextStyle(color: Colors.deepOrange)),
+        content: _ActionDialogContent(
+          reasonsList: nurseRejectionReasons, // يمكن استخدامها كأمثلة
+          onDetailsChanged: (details) => complaintDetails = details,
+          isComplaint: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              if (complaintDetails!.trim().isNotEmpty) {
+                ordersProvider.fileComplaint(order.id, complaintDetails!, context);
+              } else {
+                showSnackBar(context, 'الرجاء إدخال تفاصيل الشكوى.', isError: true);
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange),
+            child: const Text('تأكيد الشكوى'),
+          ),
+        ],
+      ),
+    );
+  }
+
+// ✅ دالة إنشاء أزرار تأكيد وصول الممرض
+Widget _buildNurseArrivalConfirmationButtons(dynamic order) {
+  // إذا تم التأكيد بالفعل، لا نعرض الأزرار
+  if (order.isNurseArrivalConfirmedByPatient == true) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.shade200),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.check_circle, color: Colors.green.shade700),
+          const SizedBox(width: 8),
+          const Text(
+            '✅ تم تأكيد وصول الممرض',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.green,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  return Column(
+    children: [
+      // زر تأكيد وصول الممرض
+      _styledArrivalButton(
+        '✅ تأكيد وصول الممرض',
+        () => _confirmNurseArrival(context, order),
+        color: Colors.green,
+        icon: Icons.person_pin_circle,
+      ),
+      const SizedBox(height: 8),
+      
+      // زر رفض/إبلاغ
+      _outlinedArrivalButton(
+        '❌ الممرض لم يصل',
+        () => _reportNurseNotArrived(context, order),
+        color: Colors.orange,
+        icon: Icons.timer_off,
+      ),
+      
+      const SizedBox(height: 8),
+      
+      // زر إبلاغ عن ممرض غير صحيح
+      _outlinedArrivalButton(
+        '🚫 الممرض ليس الذي طلبته',
+        () => _reportWrongNurse(context, order),
+        color: Colors.red,
+        icon: Icons.warning_amber,
+      ),
+    ],
+  );
+}
+
+// ✅ دالة تأكيد وصول الممرض
+Future<void> _confirmNurseArrival(BuildContext context, dynamic order) async {
+  final ordersProvider = Provider.of<OrdersProvider>(context, listen: false);
+  
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Row(
+        children: [
+          Icon(Icons.person_pin_circle, color: Colors.green),
+          SizedBox(width: 8),
+          Text('تأكيد وصول الممرض'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Column(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green, size: 40),
+                SizedBox(height: 12),
+                Text(
+                  'هل تؤكد أن الممرض وصل إلى موقعك؟',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'سيتم إعلام الممرض وبدء الخدمة',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('ليس الآن'),
+        ),
+        ElevatedButton.icon(
+          onPressed: () => Navigator.pop(ctx, true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+          icon: const Icon(Icons.check),
+          label: const Text('نعم، وصل'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirm == true) {
+    try {
+      await ordersProvider.confirmNurseArrival(order.id);
+      if (mounted) {
+        showSnackBar(context, '✅ تم تأكيد وصول الممرض بنجاح');
+      }
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(context, '❌ فشل في تأكيد الوصول: $e', isError: true);
+      }
     }
+  }
+}
+
+// ✅ دالة الإبلاغ عن عدم وصول الممرض
+Future<void> _reportNurseNotArrived(BuildContext context, dynamic order) async {
+  final ordersProvider = Provider.of<OrdersProvider>(context, listen: false);
+  
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Row(
+        children: [
+          Icon(Icons.timer_off, color: Colors.orange),
+          SizedBox(width: 8),
+          Text('الإبلاغ عن عدم الوصول'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Column(
+              children: [
+                Icon(Icons.timer_off, color: Colors.orange, size: 40),
+                SizedBox(height: 12),
+                Text(
+                  'هل تريد الإبلاغ أن الممرض لم يصل بعد؟',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'سيتم إرسال تنبيه للممرض والدعم الفني',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('تراجع'),
+        ),
+        ElevatedButton.icon(
+          onPressed: () => Navigator.pop(ctx, true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.orange,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+          icon: const Icon(Icons.report),
+          label: const Text('تأكيد الإبلاغ'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirm == true) {
+    try {
+      await ordersProvider.reportNurseNotArrived(order.id);
+      if (mounted) {
+        showSnackBar(context, '📨 تم الإبلاغ عن عدم الوصول');
+      }
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(context, '❌ فشل في الإبلاغ: $e', isError: true);
+      }
+    }
+  }
+}
+
+// ✅ دالة الإبلاغ عن ممرض غير صحيح
+Future<void> _reportWrongNurse(BuildContext context, dynamic order) async {
+  final ordersProvider = Provider.of<OrdersProvider>(context, listen: false);
+  
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Row(
+        children: [
+          Icon(Icons.warning_amber, color: Colors.red),
+          SizedBox(width: 8),
+          Text('الإبلاغ عن ممرض غير صحيح'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Column(
+              children: [
+                Icon(Icons.warning_amber, color: Colors.red, size: 40),
+                SizedBox(height: 12),
+                Text(
+                  'هل تريد الإبلاغ أن الممرض الحالي ليس الذي طلبته؟',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'سيتم إرسال تنبيه عاجل للدعم الفني',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('تراجع'),
+        ),
+        ElevatedButton.icon(
+          onPressed: () => Navigator.pop(ctx, true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+          icon: const Icon(Icons.flag),
+          label: const Text('تأكيد الإبلاغ'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirm == true) {
+    try {
+      await ordersProvider.reportWrongNurse(order.id);
+      if (mounted) {
+        showSnackBar(context, '🚨 تم الإبلاغ عن ممرض غير صحيح');
+      }
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(context, '❌ فشل في الإبلاغ: $e', isError: true);
+      }
+    }
+  }
+}
+
+// ✅ دالة مساعدة لزر التأكيد
+Widget _styledArrivalButton(String label, VoidCallback onPressed,
+    {Color? color, IconData? icon}) {
+  return Container(
+    width: double.infinity,
+    height: 50,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: [
+        BoxShadow(
+          color: (color ?? Colors.green).withOpacity(0.3),
+          blurRadius: 8,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    ),
+    child: ElevatedButton.icon(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color ?? Colors.green,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        elevation: 0,
+      ),
+      onPressed: onPressed,
+      icon: Icon(icon ?? Icons.check, size: 20),
+      label: Text(
+        label,
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      ),
+    ),
+  );
+}
+
+// ✅ دالة مساعدة لزر الإبلاغ
+Widget _outlinedArrivalButton(String label, VoidCallback onPressed,
+    {Color? color, IconData? icon}) {
+  return SizedBox(
+    width: double.infinity,
+    height: 45,
+    child: OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: color ?? Colors.orange,
+        side: BorderSide(color: (color ?? Colors.orange).withOpacity(0.7), width: 1.5),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      onPressed: onPressed,
+      icon: Icon(icon ?? Icons.report, size: 18),
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: color ?? Colors.orange,
+        ),
+      ),
+    ),
+  );
+}
+  // 4. الدالة المساعدة لإنشاء الأزرار التفاعلية
+  Widget _buildOrderActions(dynamic order) {
+    final currentStatus = order.status;
+    const isPatient = true; // نفترض أن هذه شاشة المريض
+
+    final showCancel = canCancelOrder(currentStatus, isPatient: isPatient);
+    final showRate = canRateOrder(currentStatus) && !(order.isRated ?? false);
+
+    // Logic for Refund Request Button (based on user's table: "بعد completed أو service_incomplete")
+    final showRefundRequestButton = (currentStatus == orderStatusCompleted || currentStatus == orderStatusServiceIncomplete) &&
+        currentStatus != orderStatusRefundRequested && currentStatus != orderStatusRefunded;
+
+    // Logic for Complaint/Dispute button
+    final showComplaintButton = isActiveOrder(currentStatus) || 
+        currentStatus == orderStatusCompleted || 
+        currentStatus == orderStatusServiceIncomplete || 
+        needsAdminIntervention(currentStatus);
+
+
+    if (!showCancel && !showRate && !showRefundRequestButton && !showComplaintButton) {
+      return const SizedBox.shrink(); 
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      child: Wrap(
+        spacing: 8.0,
+        runSpacing: 8.0,
+        alignment: WrapAlignment.start,
+        children: [
+          // 1. زر الإلغاء (للمريض في المراحل الأولى)
+          if (showCancel)
+            SizedBox(
+              height: 40,
+              child: OutlinedButton.icon(
+                onPressed: () => _showCancelDialog(context, order), // ✅ ربط الإجراء
+                icon: const Icon(Icons.close, size: 18, color: kErrorColor),
+                label: const Text('إلغاء الطلب',
+                    style: TextStyle(color: kErrorColor, fontSize: 14)),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: Colors.white.withOpacity(0.1),
+                  side: const BorderSide(color: kErrorColor),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+
+          // 2. زر التقييم (بعد اكتمال الخدمة فقط)
+          if (showRate)
+            SizedBox(
+              height: 40,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) =>
+                              LeaveReviewScreen(order: order)));
+                },
+                icon: const Icon(Icons.star_rate_rounded,
+                    size: 18, color: Colors.white),
+                label: const Text('قيّم الخدمة',
+                    style: TextStyle(color: Colors.white, fontSize: 14)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kPrimaryColor,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                  elevation: 0,
+                ),
+              ),
+            ),
+
+          // 3. زر طلب استرداد (بعد completed أو service_incomplete)
+          if (showRefundRequestButton)
+            SizedBox(
+              height: 40,
+              child: OutlinedButton.icon(
+                onPressed: () => _showRefundDialog(context, order), // ✅ ربط الإجراء
+                icon: const Icon(Icons.receipt_long,
+                    size: 18, color: Colors.purple),
+                label: const Text('طلب استرداد',
+                    style: TextStyle(color: Colors.purple, fontSize: 14)),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: Colors.white.withOpacity(0.1),
+                  side: const BorderSide(color: Colors.purple),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+
+          // 4. زر تقديم شكوى/نزاع
+          if (showComplaintButton)
+            SizedBox(
+              height: 40,
+              child: TextButton.icon(
+                onPressed: () => _showComplaintDialog(context, order), // ✅ ربط الإجراء
+                icon: const Icon(Icons.flag_outlined,
+                    size: 18, color: Colors.deepOrange),
+                label: const Text('شكوى/نزاع',
+                    style: TextStyle(color: Colors.deepOrange, fontSize: 14)),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -96,7 +656,7 @@ class _OrdersScreenState extends State<OrdersScreen>
       extendBodyBehindAppBar: true,
       appBar: _buildGlassAppBar(),
       body: Container(
-        width: double.infinity, // <-- أضف هذا السطر
+        width: double.infinity,
         height: double.infinity,
         decoration: _buildGradientBackground(),
         child: SafeArea(
@@ -238,12 +798,14 @@ class _OrdersScreenState extends State<OrdersScreen>
   }
 
   Widget _buildFilterChips() {
+    // ✅ تحديث الفلاتر لتعكس المجموعات الجديدة
     final filters = [
       {'key': 'all', 'label': 'الكل', 'icon': Icons.list_alt},
-      {'key': 'pending', 'label': 'في الانتظار', 'icon': Icons.hourglass_empty},
-      {'key': 'accepted', 'label': 'مقبول', 'icon': Icons.check_circle_outline},
-      {'key': 'completed', 'label': 'مكتمل', 'icon': Icons.done_all},
-      {'key': 'rejected', 'label': 'مرفوض', 'icon': Icons.cancel_outlined},
+      {'key': orderStatusPending, 'label': 'في الانتظار', 'icon': Icons.hourglass_empty},
+      {'key': 'active', 'label': 'نشط', 'icon': Icons.directions},
+      {'key': orderStatusCompleted, 'label': 'مكتمل', 'icon': Icons.done_all},
+      {'key': 'admin', 'label': 'نزاع/إداري', 'icon': Icons.admin_panel_settings},
+      {'key': 'cancelled_rejected', 'label': 'ملغي/مرفوض', 'icon': Icons.cancel},
     ];
 
     return SingleChildScrollView(
@@ -303,9 +865,30 @@ class _OrdersScreenState extends State<OrdersScreen>
     );
   }
 
+  // ✅ تحديث منطق التصفية لاستخدام الدوال الجديدة
   List<dynamic> _getFilteredOrders(List<dynamic> orders) {
     if (_selectedFilter == 'all') return orders;
-    return orders.where((order) => order.status == _selectedFilter).toList();
+
+    return orders.where((order) {
+      switch (_selectedFilter) {
+        case 'active':
+          return isActiveOrder(order.status);
+        case 'admin':
+          return needsAdminIntervention(order.status);
+        case 'cancelled_rejected':
+          // جميع الحالات النهائية التي ليست مكتملة أو مستردة
+          return isTerminalStatus(order.status) &&
+              order.status != orderStatusCompleted &&
+              order.status != orderStatusRefunded;
+        case orderStatusPending:
+          return order.status == orderStatusPending;
+        case orderStatusCompleted:
+          return order.status == orderStatusCompleted;
+        default:
+          // مطابقة مباشرة للحالات الأخرى (مثل expired, refunded, etc.)
+          return order.status == _selectedFilter;
+      }
+    }).toList();
   }
 
   Widget _buildLoadingState() {
@@ -506,6 +1089,8 @@ class _OrdersScreenState extends State<OrdersScreen>
   }
 
   Widget _buildOrderCard(dynamic order, int index) {
+    final currentStatus = order.status;
+
     return TweenAnimationBuilder<double>(
       duration: Duration(milliseconds: 600 + (index * 100)),
       tween: Tween(begin: 0.0, end: 1.0),
@@ -567,8 +1152,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                               _buildDivider(),
                               const SizedBox(height: 16),
                               _buildOrderInfo(order),
-                              if (order.status == 'completed' && !order.isRated)
-                                _buildRatingButton(order),
+                              _buildOrderActions(order),
                             ],
                           ),
                         ),
@@ -585,6 +1169,7 @@ class _OrdersScreenState extends State<OrdersScreen>
   }
 
   Widget _buildOrderHeader(dynamic order) {
+    final currentStatus = order.status;
     return Row(
       children: [
         Container(
@@ -603,7 +1188,8 @@ class _OrdersScreenState extends State<OrdersScreen>
               width: 1.5,
             ),
           ),
-          child: const Icon(Icons.receipt_long, color: Colors.white, size: 22),
+          child: Icon(getOrderStatusIcon(currentStatus), // ✅ استخدام أيقونة الحالة الجديدة
+              color: Colors.white, size: 22),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -630,13 +1216,15 @@ class _OrdersScreenState extends State<OrdersScreen>
             ],
           ),
         ),
-        _buildStatusBadge(order.status),
+        _buildStatusBadge(currentStatus), // ✅ تمرير الحالة مباشرة
       ],
     );
   }
 
   Widget _buildStatusBadge(String status) {
-    final color = _getStatusColor(status);
+    final color = getOrderStatusColor(status); // ✅ استخدام دالة اللون الجديدة
+    final text = getOrderStatusText(status); // ✅ استخدام دالة النص الجديدة
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -655,10 +1243,9 @@ class _OrdersScreenState extends State<OrdersScreen>
         ],
       ),
       child: Text(
-        _getStatusText(status),
-        style: const TextStyle(
-          // يمكنك إضافة const هنا لتحسين الأداء
-          color: Colors.white, // <-- هذا هو التعديل الوحيد المطلوب
+        text,
+        style: TextStyle( // ✅ استخدام TextStyle بدلاً من const TextStyle للسماح بتغيير اللون
+          color: Colors.white,
           fontSize: 12,
           fontWeight: FontWeight.bold,
         ),
@@ -670,7 +1257,7 @@ class _OrdersScreenState extends State<OrdersScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (order.status == 'accepted' && order.nurseName != null)
+        if (order.status == orderStatusAccepted && order.nurseName != null) // ✅ استخدام الثابت الجديد
           Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(12),
@@ -787,72 +1374,6 @@ class _OrdersScreenState extends State<OrdersScreen>
     );
   }
 
-  Widget _buildRatingButton(dynamic order) {
-    return Container(
-      margin: const EdgeInsets.only(top: 16),
-      width: double.infinity,
-      height: 50,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(15),
-        gradient: const LinearGradient(
-          colors: [
-            Color.fromARGB(255, 153, 160, 255),
-            Color.fromARGB(255, 183, 188, 255),
-            Color.fromARGB(255, 153, 160, 255),
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color.fromARGB(255, 112, 141, 255).withOpacity(0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(15),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => LeaveReviewScreen(order: order),
-              ),
-            );
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.2),
-                  ),
-                  child: const Icon(Icons.star_rounded,
-                      color: Colors.white, size: 18),
-                ),
-                const SizedBox(width: 10),
-                const Text(
-                  'قيّم الخدمة الآن',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildDivider() {
     return Container(
       height: 1,
@@ -864,6 +1385,111 @@ class _OrdersScreenState extends State<OrdersScreen>
             Colors.transparent,
           ],
         ),
+      ),
+    );
+  }
+}
+
+// =========================================================================
+// 💡 ويدجت داخلي جديد: محتوى حوار الإجراءات مع إدخال السبب
+// =========================================================================
+
+class _ActionDialogContent extends StatefulWidget {
+  final List<String> reasonsList;
+  final Function(String?)? onReasonChanged;
+  final Function(String)? onDetailsChanged;
+  final bool isComplaint;
+
+  const _ActionDialogContent({
+    required this.reasonsList,
+    this.onReasonChanged,
+    this.onDetailsChanged,
+    this.isComplaint = false,
+  });
+
+  @override
+  _ActionDialogContentState createState() => _ActionDialogContentState();
+}
+
+class _ActionDialogContentState extends State<_ActionDialogContent> {
+  String? _selectedReason;
+  final TextEditingController _detailsController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedReason = widget.reasonsList.isNotEmpty ? widget.reasonsList.first : null;
+    if (widget.onReasonChanged != null) {
+      widget.onReasonChanged!(_selectedReason);
+    }
+    _detailsController.addListener(_onDetailsChanged);
+  }
+
+  @override
+  void dispose() {
+    _detailsController.removeListener(_onDetailsChanged);
+    _detailsController.dispose();
+    super.dispose();
+  }
+
+  void _onDetailsChanged() {
+    if (widget.onDetailsChanged != null) {
+      widget.onDetailsChanged!(_detailsController.text);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('الرجاء اختيار السبب:', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            value: _selectedReason,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            ),
+            hint: const Text('اختر سبباً'),
+            items: widget.reasonsList.map((String reason) {
+              return DropdownMenuItem<String>(
+                value: reason,
+                child: Text(reason),
+              );
+            }).toList(),
+            onChanged: (String? newValue) {
+              setState(() {
+                _selectedReason = newValue;
+              });
+              if (widget.onReasonChanged != null) {
+                widget.onReasonChanged!(newValue);
+              }
+            },
+          ),
+          
+          if (widget.isComplaint) ...[
+            const SizedBox(height: 20),
+            const Text('ملاحظات إضافية (مطلوب للشكوى):', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _detailsController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'أدخل تفاصيل الشكوى هنا...',
+              ),
+              validator: (value) {
+                if (widget.isComplaint && (value == null || value.isEmpty)) {
+                  return 'الرجاء إدخال تفاصيل الشكوى.';
+                }
+                return null;
+              },
+            ),
+          ],
+        ],
       ),
     );
   }

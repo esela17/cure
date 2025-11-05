@@ -71,33 +71,27 @@ const String orderStatusRejected = 'rejected';
 const String orderStatusCancelled = 'cancelled';
 const String orderStatusExpired = 'expired';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ⚠️ حالات الإلغاء والرفض (Cancellation & Rejection)
-// ═══════════════════════════════════════════════════════════════════════════
+// ❌ حالات الإلغاء والرفض (Cancellation & Rejection)
 const String orderStatusCancelledByPatient = 'cancelled_by_patient';
 const String orderStatusCancelledByNurse = 'cancelled_by_nurse';
 const String orderStatusRejectedAtDoor = 'rejected_at_door';
 const String orderStatusPatientNotFound = 'patient_not_found';
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 💰 حالات الدفع (Payment Status)
-// ═══════════════════════════════════════════════════════════════════════════
 const String orderStatusPaymentPending = 'payment_pending';
 const String orderStatusPaymentDispute = 'payment_dispute';
 const String orderStatusPartialPayment = 'partial_payment';
 const String orderStatusPaymentFailed = 'payment_failed';
+const String orderStatusCashConfirmedByPatient = 'cash_confirmed_patient'; // ✅ جديد
+const String orderStatusCashConfirmedByNurse = 'cash_confirmed_nurse'; // ✅ جديد
 
-// ═══════════════════════════════════════════════════════════════════════════
 // 🚨 حالات طارئة ونزاعات (Emergency & Disputes)
-// ═══════════════════════════════════════════════════════════════════════════
 const String orderStatusEmergency = 'emergency';
 const String orderStatusDispute = 'dispute';
 const String orderStatusServiceIncomplete = 'service_incomplete';
 const String orderStatusComplaint = 'complaint';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 📝 حالات الاسترداد (Refund Status)
-// ═══════════════════════════════════════════════════════════════════════════
+// 💸 حالات الاسترداد (Refund Status)
 const String orderStatusRefundRequested = 'refund_requested';
 const String orderStatusRefunded = 'refunded';
 
@@ -148,7 +142,18 @@ const List<String> incompleteServiceReasons = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 🎨 دوال الألوان والأيقونات
+// 🆕 قوائم أسباب عدم الوصول (للممرض)
+// ═══════════════════════════════════════════════════════════════════════════
+const List<String> notArrivedReasons = [
+  'العنوان غير صحيح',
+  'المريض غير متواجد',
+  'المكان مغلق',
+  'مشكلة في الاتصال',
+  'سبب آخر',
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🎨 دوال الألوان والأيقونات (يجب أن تبقى في Constants لسهولة الوصول)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// الحصول على لون الحالة
@@ -156,20 +161,22 @@ Color getOrderStatusColor(String status) {
   switch (status) {
     // حالات إيجابية (نجاح)
     case orderStatusCompleted:
+    case orderStatusCashConfirmedByPatient: // ✅ جديد
+    case orderStatusCashConfirmedByNurse: // ✅ جديد
       return kSuccessColor;
-    
+
     // حالات نشطة (قيد التنفيذ)
     case orderStatusAccepted:
     case orderStatusOnTheWay:
     case orderStatusInProgress:
       return kPrimaryColor;
-    
+
     // حالات انتظار (تحذير)
     case orderStatusPending:
     case orderStatusArrived:
     case orderStatusPaymentPending:
       return kWarningColor;
-    
+
     // حالات سلبية (رفض/إلغاء)
     case orderStatusRejected:
     case orderStatusCancelled:
@@ -180,27 +187,27 @@ Color getOrderStatusColor(String status) {
     case orderStatusPaymentFailed:
     case orderStatusExpired:
       return kErrorColor;
-    
+
     // حالات نزاعات
     case orderStatusDispute:
     case orderStatusPaymentDispute:
     case orderStatusComplaint:
       return Colors.deepOrange;
-    
+
     // حالات طارئة
     case orderStatusEmergency:
       return Colors.red.shade900;
-    
+
     // حالات استرداد
     case orderStatusRefundRequested:
     case orderStatusRefunded:
       return Colors.purple;
-    
+
     // حالات أخرى
     case orderStatusServiceIncomplete:
     case orderStatusPartialPayment:
       return Colors.grey;
-    
+
     default:
       return Colors.grey.shade600;
   }
@@ -248,7 +255,11 @@ String getOrderStatusText(String status) {
       return 'دفع جزئي';
     case orderStatusPaymentFailed:
       return 'فشل الدفع';
-    
+    case orderStatusCashConfirmedByPatient: // ✅ جديد
+      return 'تم تأكيد النقدية من المريض';
+    case orderStatusCashConfirmedByNurse: // ✅ جديد
+      return 'تم تأكيد النقدية من الممرض';
+
     // حالات طارئة ونزاعات
     case orderStatusEmergency:
       return 'حالة طارئة';
@@ -297,6 +308,8 @@ IconData getOrderStatusIcon(String status) {
     case orderStatusExpired:
       return Icons.timer_off;
     case orderStatusPaymentPending:
+    case orderStatusCashConfirmedByPatient: // ✅ جديد
+    case orderStatusCashConfirmedByNurse: // ✅ جديد
       return Icons.payment;
     case orderStatusPaymentDispute:
     case orderStatusDispute:
@@ -320,7 +333,7 @@ IconData getOrderStatusIcon(String status) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ✅ دوال التحقق من الحالة
+// ✅ دوال التحقق من الحالة (يجب أن تبقى في Constants لسهولة الوصول)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// هل الطلب قابل للتقييم؟
@@ -358,6 +371,8 @@ bool isTerminalStatus(String status) {
     orderStatusExpired,
     orderStatusRefunded,
     orderStatusPatientNotFound,
+    orderStatusCashConfirmedByPatient, // ✅ جديد
+    orderStatusCashConfirmedByNurse, // ✅ جديد
   ].contains(status);
 }
 
@@ -416,6 +431,7 @@ List<String> getNextAllowedStatuses(String currentStatus, {required bool isNurse
       case orderStatusOnTheWay:
         return [orderStatusCancelledByPatient];
       case orderStatusCompleted:
+      case orderStatusServiceIncomplete: // يمكن طلب الاسترداد بعد الخدمة غير المكتملة
         return [orderStatusComplaint, orderStatusRefundRequested];
       case orderStatusInProgress:
       case orderStatusArrived:
@@ -465,6 +481,10 @@ String getOrderStatusDescription(String status) {
       return 'تم دفع جزء من المبلغ فقط';
     case orderStatusPaymentFailed:
       return 'فشلت عملية الدفع الإلكتروني';
+    case orderStatusCashConfirmedByPatient: // ✅ جديد
+      return 'لقد قمت بتأكيد تسليم النقدية للممرض بنجاح.';
+    case orderStatusCashConfirmedByNurse: // ✅ جديد
+      return 'تم تأكيد استلام النقدية من الممرض بنجاح.';
     case orderStatusEmergency:
       return 'حالة طارئة تحتاج تدخل فوري';
     case orderStatusDispute:
@@ -490,4 +510,146 @@ bool requiresUrgentNotification(String status) {
     orderStatusPatientNotFound,
     orderStatusRejectedAtDoor,
   ].contains(status);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🆕 دوال مساعدة للدفع النقدي (الميزات الجديدة)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// هل يمكن طلب الدفع النقدي من المريض؟
+bool canRequestCashPayment(String status, String paymentMethod) {
+  return paymentMethod == paymentMethodCash && 
+         status == orderStatusArrived;
+}
+
+/// هل يمكن تأكيد استلام النقدية من الممرض؟
+bool canConfirmCashReceiptByNurse(String status, String paymentMethod, 
+    {bool isCashPaymentRequested = false, bool isPaymentConfirmedByPatient = false}) {
+  return paymentMethod == paymentMethodCash && 
+         status == orderStatusArrived && 
+         isCashPaymentRequested && 
+         (isPaymentConfirmedByPatient || true); // يمكن للممرض التأكيد حتى بدون تأكيد المريض
+}
+
+/// هل يمكن تأكيد تسليم النقدية من المريض؟
+bool canConfirmCashDeliveryByPatient(String status, String paymentMethod, 
+    {bool isCashPaymentRequested = false}) {
+  return paymentMethod == paymentMethodCash && 
+         status == orderStatusArrived && 
+         isCashPaymentRequested;
+}
+
+/// الحصول على حالة تدفق الدفع النقدي
+String getCashPaymentFlowStatus({
+  required String paymentMethod,
+  required String orderStatus,
+  required bool isCashPaymentRequested,
+  required bool isPaymentConfirmedByPatient,
+  required bool isPaymentConfirmedByNurse,
+}) {
+  if (paymentMethod != paymentMethodCash) return 'غير نقدي';
+  
+  if (isPaymentConfirmedByNurse && isPaymentConfirmedByPatient) {
+    return 'تم اكتمال الدفع النقدي';
+  } else if (isPaymentConfirmedByNurse) {
+    return 'بانتظار تأكيد المريض';
+  } else if (isPaymentConfirmedByPatient) {
+    return 'بانتظار تأكيد الممرض';
+  } else if (isCashPaymentRequested) {
+    return 'بانتظار تسليم المبلغ';
+  } else if (orderStatus == orderStatusArrived) {
+    return 'جاهز لطلب الدفع';
+  } else {
+    return 'غير جاهز للدفع';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🆕 دوال مساعدة للتحرك والتتبع
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// هل يمكن للممرض تأكيد التحرك؟
+bool canConfirmNurseMoving(String status, {bool isNurseMovingRequested = false}) {
+  return status == orderStatusAccepted && isNurseMovingRequested;
+}
+
+/// هل يمكن للمريض طلب تأكيد التحرك؟
+bool canRequestNurseMovement(String status) {
+  return status == orderStatusAccepted;
+}
+
+/// هل يمكن للمريض تأكيد رؤية الممرض يتحرك؟
+bool canConfirmNurseMovementByPatient(String status, {bool isNurseMovingConfirmed = false}) {
+  return status == orderStatusAccepted && isNurseMovingConfirmed;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🆕 دوال مساعدة للعمليات المالية
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// حساب قيمة العمولة
+double calculateCommission(double finalPrice, double commissionRate) {
+  return finalPrice * (commissionRate / 100);
+}
+
+/// حساب صافي ربح الممرض
+double calculateNurseEarnings(double finalPrice, double commissionRate) {
+  return finalPrice - calculateCommission(finalPrice, commissionRate);
+}
+
+/// تنسيق المبلغ بالعملة
+String formatCurrency(double amount) {
+  return '${amount.toStringAsFixed(2)} ج.م';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🆕 ثوابت التطبيق العامة
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// وقت المهلة للإلغاء بعد القبول (20 دقيقة)
+const Duration cancellationTimeoutDuration = Duration(minutes: 20);
+
+/// الحد الأدنى للمبلغ للدفع الإلكتروني
+const double minimumOnlinePaymentAmount = 10.0;
+
+/// نسبة العمولة الافتراضية
+const double defaultCommissionRate = 15.0;
+
+/// أنواع الإشعارات
+const String notificationTypeOrderUpdate = 'order_update';
+const String notificationTypePayment = 'payment';
+const String notificationTypeMovement = 'movement';
+const String notificationTypeCashRequest = 'cash_request';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🆕 رسائل التطبيق
+// ═══════════════════════════════════════════════════════════════════════════
+
+class AppMessages {
+  static const String cashPaymentRequested = 'تم إرسال طلب تسليم المبلغ النقدي للمريض';
+  static const String cashPaymentConfirmedByNurse = 'تم تأكيد استلام المبلغ النقدي';
+  static const String cashPaymentConfirmedByPatient = 'تم تأكيد تسليم المبلغ النقدي';
+  static const String nurseMovementConfirmed = 'تم تأكيد التحرك بنجاح';
+  static const String orderCompletedSuccessfully = 'تم إنهاء الخدمة بنجاح';
+  static const String orderCancelled = 'تم إلغاء الطلب';
+  static const String orderRejected = 'تم رفض الطلب';
+  static const String arrivalConfirmed = 'تم تأكيد الوصول بنجاح';
+  
+  static String earningsAdded(double amount) => 'تم إضافة ${formatCurrency(amount)} إلى رصيدك';
+  static String commissionDeducted(double amount) => 'تم خصم ${formatCurrency(amount)} كعمولة للمنصة';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🆕 أخطاء التطبيق
+// ═══════════════════════════════════════════════════════════════════════════
+
+class AppErrors {
+  static const String networkError = 'حدث خطأ في الاتصال بالإنترنت';
+  static const String serverError = 'حدث خطأ في الخادم';
+  static const String unknownError = 'حدث خطأ غير متوقع';
+  static const String orderNotFound = 'الطلب غير موجود';
+  static const String insufficientBalance = 'رصيد غير كافٍ';
+  static const String paymentFailed = 'فشلت عملية الدفع';
+  static const String locationRequired = 'يجب تحديد الموقع';
+  static const String invalidPhoneNumber = 'رقم الهاتف غير صحيح';
 }

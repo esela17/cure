@@ -2,9 +2,13 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:cure_app/models/order.dart';
 import 'package:cure_app/models/user_model.dart';
 import 'package:cure_app/services/firestore_service.dart';
+import 'package:cure_app/utils/order_statuses.dart';
+import 'package:cure_app/utils/helpers.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore_package;
 
 class NurseProvider with ChangeNotifier {
   final FirestoreService _firestoreService;
@@ -31,10 +35,10 @@ class NurseProvider with ChangeNotifier {
   // Getters for stats
   int get pendingOrdersCount => _pendingOrders.length;
   int get acceptedOrdersCount => _myOrders
-      .where((o) => o.status == 'accepted' || o.status == 'arrived')
+      .where((o) => o.status == OrderStatus.accepted || o.status == OrderStatus.arrived)
       .length;
   int get completedOrdersCount =>
-      _myOrders.where((o) => o.status == 'completed').length;
+      _myOrders.where((o) => o.status == OrderStatus.completed).length;
 
   void setAvailability(bool available) {
     _isAvailable = available;
@@ -52,7 +56,7 @@ class NurseProvider with ChangeNotifier {
       _errorMessage = null;
       notifyListeners();
     }, onError: (error) {
-      print("!!!!!!!! ERROR fetching pending orders: $error !!!!!!!!");
+      debugPrint("!!!!!!!! ERROR fetching pending orders: $error !!!!!!!!");
       _errorMessage = "حدث خطأ في جلب الطلبات المتاحة.";
       _isLoading = false;
       notifyListeners();
@@ -66,11 +70,13 @@ class NurseProvider with ChangeNotifier {
       _myOrders = orders;
       notifyListeners();
     }, onError: (error) {
-      print("Error fetching nurse's own orders: $error");
+      debugPrint("Error fetching nurse's own orders: $error");
     });
   }
 
-  // ✅ دالة قبول الطلب
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ⭐ ACCEPT ORDER - قبول الطلب (تتضمن مؤقت الإلغاء)
+  // ═══════════════════════════════════════════════════════════════════════════
   Future<bool> acceptOrder(Order order, UserModel nurse) async {
     _isLoading = true;
     notifyListeners();
@@ -79,18 +85,17 @@ class NurseProvider with ChangeNotifier {
         throw Exception("فشل تحديد معرف الممرض.");
       }
 
-      await _firestoreService.updateOrderStatus(order.id, {
-        'status': 'accepted',
-        'nurseId': nurse.id,
-        'nurseName': nurse.name,
-      });
+      await _firestoreService.acceptOrder(
+        order.id,
+        nurse.id,
+        nurse.name,
+      );
 
       // تحديث القوائم المحلية بعد قبول الطلب
       fetchPendingOrders();
       if (nurse.id.isNotEmpty) fetchMyOrders(nurse.id);
 
       _isLoading = false;
-      notifyListeners();
       return true;
     } catch (e) {
       _errorMessage = "فشل قبول الطلب: $e";
@@ -100,12 +105,15 @@ class NurseProvider with ChangeNotifier {
     }
   }
 
-  Future<bool> rejectOrder(Order order) async {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ❌ REJECT ORDER - رفض الطلب
+  // ═══════════════════════════════════════════════════════════════════════════
+  Future<bool> rejectOrder(Order order, String reason) async {
     _isLoading = true;
     notifyListeners();
     try {
-      await _firestoreService
-          .updateOrderStatus(order.id, {'status': 'rejected'});
+      await _firestoreService.rejectOrder(order.id, reason);
+      
       fetchPendingOrders();
       _isLoading = false;
       notifyListeners();
@@ -118,12 +126,22 @@ class NurseProvider with ChangeNotifier {
     }
   }
 
-  Future<bool> markAsArrived(Order order) async {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🏃 MARK AS ON THE WAY - في الطريق
+  // ═══════════════════════════════════════════════════════════════════════════
+  Future<bool> markAsOnTheWay(Order order) async {
     _isLoading = true;
     notifyListeners();
     try {
-      await _firestoreService
-          .updateOrderStatus(order.id, {'status': 'arrived'});
+      await _firestoreService.updateOrderFields(
+        order.id,
+        {
+          'status': OrderStatus.onTheWay,
+          'isNurseMovingConfirmed': true, 
+          'nurseMovingConfirmedAt': firestore_package.FieldValue.serverTimestamp(),
+        },
+      );
+      
       if (order.nurseId != null) fetchMyOrders(order.nurseId!);
       _isLoading = false;
       notifyListeners();
@@ -136,13 +154,88 @@ class NurseProvider with ChangeNotifier {
     }
   }
 
-  // ✅ دالة إكمال الطلب
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📍 MARK AS ARRIVED - وصل الممرض
+  // ═══════════════════════════════════════════════════════════════════════════
+  Future<bool> markAsArrived(Order order) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      await _firestoreService.markAsArrived(order.id); 
+      
+      if (order.nurseId != null) fetchMyOrders(order.nurseId!);
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = "فشل تحديث الحالة: $e";
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🆕 REPORT NOT ARRIVED - الإبلاغ عن عدم الوصول
+  // ═══════════════════════════════════════════════════════════════════════════
+  Future<bool> reportNotArrived(Order order, String reason) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      await _firestoreService.updateOrderFields(order.id, {
+        'status': OrderStatus.cancelledByNurse,
+        'cancelReason': 'لم يصل الممرض: $reason',
+        'cancelledBy': 'nurse',
+        'cancelledAt': firestore_package.FieldValue.serverTimestamp(),
+      });
+      
+      // تحديث القوائم
+      fetchPendingOrders();
+      if (order.nurseId != null) fetchMyOrders(order.nurseId!);
+      
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = "فشل في الإبلاغ عن عدم الوصول: $e";
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🆕 CONFIRM NURSE MOVING - تأكيد تحرك الممرض
+  // ═══════════════════════════════════════════════════════════════════════════
+  Future<bool> confirmNurseMoving(Order order) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      await _firestoreService.updateOrderFields(order.id, {
+        'isNurseMovingConfirmed': true,
+        'nurseMovingConfirmedAt': firestore_package.FieldValue.serverTimestamp(),
+      });
+      
+      if (order.nurseId != null) fetchMyOrders(order.nurseId!);
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = "فشل في تأكيد التحرك: $e";
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ✅ COMPLETE ORDER - إكمال الطلب
+  // ═══════════════════════════════════════════════════════════════════════════
   Future<bool> completeOrder(Order order) async {
     _isLoading = true;
     notifyListeners();
     try {
-      await _firestoreService
-          .updateOrderStatus(order.id, {'status': 'completed'});
+      await _firestoreService.completeOrder(order.id);
 
       if (order.nurseId != null) {
         await _firestoreService.incrementNurseJobCount(order.nurseId!);
@@ -158,6 +251,52 @@ class NurseProvider with ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 💰 NURSE CONFIRMS CASH PAYMENT - تأكيد استلام النقدية
+  // ═══════════════════════════════════════════════════════════════════════════
+  Future<bool> nurseConfirmsCashPayment(String orderId) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      await _firestoreService.nurseConfirmsCashPayment(orderId);
+      return true;
+    } catch (e) {
+      _errorMessage = "فشل في تأكيد الدفع: ${e.toString()}";
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🆕 GET ORDER BY ID - الحصول على طلب بواسطة المعرف
+  // ═══════════════════════════════════════════════════════════════════════════
+  Future<Order?> getOrderById(String orderId) async {
+    try {
+      return await _firestoreService.getOrder(orderId);
+    } catch (e) {
+      _errorMessage = "فشل في جلب بيانات الطلب: $e";
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🆕 REFRESH ORDERS - تحديث القوائم
+  // ═══════════════════════════════════════════════════════════════════════════
+  void refreshOrders(String nurseId) {
+    fetchPendingOrders();
+    fetchMyOrders(nurseId);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🆕 CLEAR ERROR - مسح رسالة الخطأ
+  // ═══════════════════════════════════════════════════════════════════════════
+  void clearError() {
+    _errorMessage = null;
+    notifyListeners();
   }
 
   @override
